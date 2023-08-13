@@ -1101,6 +1101,12 @@ pub fn addDbgVar(
     name: []const u8,
 ) Allocator.Error!void {
     _ = is_ptr;
+    if (operand == .none) return;
+
+    // TODO create a dedicated function for this
+    if (operand == .unknown_unknown) return;
+    if (operand == .unknown_type) return;
+    if (sema.mod.ip.indexToKey(operand) == .unknown_value) return;
 
     const handle = block.getHandle(sema.mod);
     const source_index = offsets.positionToIndex(
