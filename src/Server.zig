@@ -873,6 +873,12 @@ pub fn updateConfiguration(server: *Server, new_config: configuration.Configurat
         server.mod = Module.init(server.allocator, &server.ip, &server.document_store);
         server.document_store.mod = &server.mod.?;
     } else if (server.mod) |*mod| {
+        for (server.document_store.handles.values()) |handle| {
+            if (handle.root_decl.unwrap()) |decl_index| {
+                mod.destroyDecl(decl_index);
+                handle.root_decl = .none;
+            }
+        }
         mod.deinit();
         server.mod = null;
         server.document_store.mod = null;
