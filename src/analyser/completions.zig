@@ -49,10 +49,9 @@ pub fn dotCompletions(
                     .union_type => {}, // TODO
                     .enum_type => |enum_index| {
                         const enum_info = ip.getEnum(enum_index);
-                        var field_it = enum_info.fields.iterator();
-                        while (field_it.next()) |entry| {
+                        for (enum_info.fields.keys()) |field_name_index| {
                             try completions.append(arena, .{
-                                .label = entry.key_ptr.*,
+                                .label = ip.string_pool.stringToSlice(field_name_index),
                                 .kind = .EnumMember,
                                 // include field.val?
                             });
@@ -94,10 +93,8 @@ pub fn dotCompletions(
         .struct_type => |struct_index| {
             const struct_info = ip.getStruct(struct_index);
             try completions.ensureUnusedCapacity(arena, struct_info.fields.count());
-            var field_it = struct_info.fields.iterator();
-            while (field_it.next()) |entry| {
-                const label = entry.key_ptr.*;
-                const field = entry.value_ptr.*;
+            for (struct_info.fields.keys(), struct_info.fields.values()) |field_name_index, field| {
+                const label = ip.string_pool.stringToSlice(field_name_index);
                 completions.appendAssumeCapacity(.{
                     .label = label,
                     .kind = .Field,
@@ -117,9 +114,9 @@ pub fn dotCompletions(
         },
         .enum_type => |enum_index| {
             const enum_info = ip.getEnum(enum_index);
-            for (enum_info.fields.keys(), enum_info.values.keys()) |field_name, field_value| {
+            for (enum_info.fields.keys(), enum_info.values.keys()) |field_name_index, field_value| {
                 try completions.append(arena, .{
-                    .label = field_name,
+                    .label = ip.string_pool.stringToSlice(field_name_index),
                     .kind = .Field,
                     .detail = try std.fmt.allocPrint(arena, "{}", .{field_value.fmt(ip)}),
                 });
@@ -127,10 +124,8 @@ pub fn dotCompletions(
         },
         .union_type => |union_index| {
             const union_info = ip.getUnion(union_index);
-            var field_it = union_info.fields.iterator();
-            while (field_it.next()) |entry| {
-                const label = entry.key_ptr.*;
-                const field = entry.value_ptr.*;
+            for (union_info.fields.keys(), union_info.fields.values()) |field_name_index, field| {
+                const label = ip.string_pool.stringToSlice(field_name_index);
                 try completions.append(arena, .{
                     .label = label,
                     .kind = .Field,

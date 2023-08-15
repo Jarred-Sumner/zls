@@ -1309,12 +1309,12 @@ fn fieldVal(
                         _ = error_set_info;
                     },
                     .union_type => {}, // TODO
-                    .enum_type => |enum_index| { // TODO
+                    .enum_type => |enum_index| blk: { // TODO
                         const enum_info = sema.mod.ip.getEnum(enum_index);
-                        if (enum_info.fields.get(field_name)) |field| {
-                            _ = field;
-                            return .unknown_unknown; // TODO
-                        }
+                        const field_name_index = sema.mod.ip.string_pool.getString(field_name) orelse break :blk;
+                        const field = enum_info.fields.get(field_name_index) orelse break :blk;
+                        _ = field;
+                        return .unknown_unknown; // TODO
                     },
                     else => {},
                 }
@@ -1361,19 +1361,19 @@ fn fieldVal(
                 else => try sema.getUnknownValue(optional_info.payload_type),
             };
         },
-        .struct_type => |struct_index| {
+        .struct_type => |struct_index| blk: {
             const struct_info = sema.mod.ip.getStructMut(struct_index);
             try sema.resolveTypeFieldsStruct(struct_info);
-            if (struct_info.fields.getIndex(field_name)) |field_index| {
-                const field = struct_info.fields.values()[field_index];
+            const field_name_index = sema.mod.ip.string_pool.getString(field_name) orelse break :blk;
+            const field_index = struct_info.fields.getIndex(field_name_index) orelse break :blk;
+            const field = struct_info.fields.values()[field_index];
 
-                return switch (sema.indexToKey(val)) {
-                    .aggregate => |aggregate| aggregate.values[field_index],
-                    .undefined_value => try sema.getUndefinedValue(field.ty),
-                    .unknown_value => try sema.getUnknownValue(field.ty),
-                    else => unreachable, // TODO return error.InvalidOperation
-                };
-            }
+            return switch (sema.indexToKey(val)) {
+                .aggregate => |aggregate| aggregate.values[field_index],
+                .undefined_value => try sema.getUndefinedValue(field.ty),
+                .unknown_value => try sema.getUnknownValue(field.ty),
+                else => unreachable, // TODO return error.InvalidOperation
+            };
         },
         .enum_type => |enum_info| { // TODO
             _ = enum_info;
@@ -2199,7 +2199,7 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
             else
                 try std.fmt.allocPrint(sema.arena, "{d}", .{field_i}));
 
-            const gop = struct_obj.fields.getOrPutAssumeCapacity(sema.mod.ip.string_pool.stringToSlice(field_name));
+            const gop = struct_obj.fields.getOrPutAssumeCapacity(field_name);
             if (gop.found_existing) continue;
 
             gop.value_ptr.* = .{

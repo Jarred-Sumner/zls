@@ -240,7 +240,7 @@ test "ComptimeInterpreter - call return struct" {
     try std.testing.expectEqual(std.builtin.Type.ContainerLayout.Auto, struct_info.layout);
 
     try std.testing.expectEqual(@as(usize, 1), struct_info.fields.count());
-    try std.testing.expectEqualStrings("slay", struct_info.fields.keys()[0]);
+    try std.testing.expectEqualStrings("slay", context.interpreter.ip.string_pool.stringToSlice(struct_info.fields.keys()[0]));
     try std.testing.expect(struct_info.fields.values()[0].ty == Index.bool_type);
 }
 

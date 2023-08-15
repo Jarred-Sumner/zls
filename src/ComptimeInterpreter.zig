@@ -236,8 +236,9 @@ pub fn interpret(
                 }
 
                 const field_name = tree.tokenSlice(container_field.ast.main_token);
+                const field_name_index = try interpreter.ip.string_pool.getOrPutString(interpreter.allocator, field_name);
 
-                try struct_info.fields.put(interpreter.allocator, field_name, .{
+                try struct_info.fields.put(interpreter.allocator, field_name_index, .{
                     .ty = init_value.index,
                     .default_value = default_value,
                     .alignment = 0, // TODO,
@@ -486,16 +487,16 @@ pub fn interpret(
                             .union_type => {}, // TODO
                             .enum_type => |enum_index| { // TODO
                                 const enum_info = interpreter.ip.getEnum(enum_index);
-                                if (enum_info.fields.get(field_name)) |field| {
-                                    _ = field;
-                                    return InterpretResult{
-                                        .value = Value{
-                                            .interpreter = interpreter,
-                                            .node_idx = data[node_idx].rhs,
-                                            .index = .unknown_unknown, // TODO
-                                        },
-                                    };
-                                }
+                                const field_name_index = interpreter.ip.string_pool.getString(field_name) orelse break :blk;
+                                const field = enum_info.fields.get(field_name_index) orelse break :blk;
+                                _ = field;
+                                return InterpretResult{
+                                    .value = Value{
+                                        .interpreter = interpreter,
+                                        .node_idx = data[node_idx].rhs,
+                                        .index = .unknown_unknown, // TODO
+                                    },
+                                };
                             },
                             else => {},
                         }
@@ -579,25 +580,25 @@ pub fn interpret(
                         .index = result,
                     } };
                 },
-                .struct_type => |struct_index| {
+                .struct_type => |struct_index| blk: {
                     const struct_info = interpreter.ip.getStruct(struct_index);
-                    if (struct_info.fields.getIndex(field_name)) |field_index| {
-                        const field = struct_info.fields.values()[field_index];
+                    const field_name_index = interpreter.ip.string_pool.getString(field_name) orelse break :blk;
+                    const field_index = struct_info.fields.getIndex(field_name_index) orelse break :blk;
+                    const field = struct_info.fields.values()[field_index];
 
-                        const result = switch (interpreter.ip.indexToKey(val)) {
-                            .aggregate => |aggregate| aggregate.values[field_index],
-                            .unknown_value => try interpreter.ip.get(interpreter.allocator, .{
-                                .unknown_value = .{ .ty = field.ty },
-                            }),
-                            else => return error.InvalidOperation,
-                        };
+                    const result = switch (interpreter.ip.indexToKey(val)) {
+                        .aggregate => |aggregate| aggregate.values[field_index],
+                        .unknown_value => try interpreter.ip.get(interpreter.allocator, .{
+                            .unknown_value = .{ .ty = field.ty },
+                        }),
+                        else => return error.InvalidOperation,
+                    };
 
-                        return InterpretResult{ .value = Value{
-                            .interpreter = interpreter,
-                            .node_idx = data[node_idx].rhs,
-                            .index = result,
-                        } };
-                    }
+                    return InterpretResult{ .value = Value{
+                        .interpreter = interpreter,
+                        .node_idx = data[node_idx].rhs,
+                        .index = result,
+                    } };
                 },
                 .enum_type => |enum_info| { // TODO
                     _ = enum_info;

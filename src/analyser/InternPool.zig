@@ -54,7 +54,7 @@ pub const FieldStatus = enum {
 pub const StructIndex = enum(u32) { _ };
 
 pub const Struct = struct {
-    fields: std.StringArrayHashMapUnmanaged(Field),
+    fields: std.AutoArrayHashMapUnmanaged(StringPool.String, Field),
     owner_decl: OptionalDeclIndex,
     zir_index: u32,
     namespace: NamespaceIndex,
@@ -88,7 +88,7 @@ pub const EnumIndex = enum(u32) { _ };
 
 pub const Enum = struct {
     tag_type: Index,
-    fields: std.StringArrayHashMapUnmanaged(void),
+    fields: std.AutoArrayHashMapUnmanaged(StringPool.String, void),
     values: std.AutoArrayHashMapUnmanaged(Index, void),
     namespace: NamespaceIndex,
     tag_type_inferred: bool,
@@ -113,7 +113,7 @@ pub const UnionIndex = enum(u32) { _ };
 
 pub const Union = struct {
     tag_type: Index,
-    fields: std.StringArrayHashMapUnmanaged(Field),
+    fields: std.AutoArrayHashMapUnmanaged(StringPool.String, Field),
     namespace: NamespaceIndex,
     layout: std.builtin.Type.ContainerLayout = .Auto,
     status: FieldStatus,
@@ -3276,8 +3276,9 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
             const struct_info = ip.getStruct(ip.indexToKey(aggregate.ty).struct_type);
 
             try writer.writeAll(".{");
-            for (aggregate.values, struct_info.fields.keys(), 0..) |field, field_name, i| {
+            for (struct_info.fields.keys(), aggregate.values, 0..) |field_name_index, field, i| {
                 if (i != 0) try writer.writeAll(", ");
+                const field_name = ip.string_pool.stringToSlice(field_name_index);
 
                 try writer.print(".{} = {}", .{
                     std.zig.fmtId(field_name),
@@ -3288,7 +3289,8 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
         },
         .union_value => |union_value| {
             const union_info = ip.getUnion(ip.indexToKey(union_value.ty).union_type);
-            const name = union_info.fields.keys()[union_value.field_index];
+            const name_index = union_info.fields.keys()[union_value.field_index];
+            const name = ip.string_pool.stringToSlice(name_index);
 
             try writer.print(".{{ .{} = {} }}", .{
                 std.zig.fmtId(name),
@@ -3694,6 +3696,9 @@ test "struct value" {
     var ip = try InternPool.init(gpa);
     defer ip.deinit(gpa);
 
+    const foo_name_index = try ip.string_pool.getOrPutString(gpa, "foo");
+    const bar_name_index = try ip.string_pool.getOrPutString(gpa, "bar");
+
     const struct_index = try ip.createStruct(gpa, .{
         .fields = .{},
         .owner_decl = .none,
@@ -3705,8 +3710,8 @@ test "struct value" {
     });
     const struct_type = try ip.get(gpa, .{ .struct_type = struct_index });
     const struct_info = ip.getStructMut(struct_index);
-    try struct_info.fields.put(gpa, "foo", .{ .ty = .usize_type });
-    try struct_info.fields.put(gpa, "bar", .{ .ty = .bool_type });
+    try struct_info.fields.put(gpa, foo_name_index, .{ .ty = .usize_type });
+    try struct_info.fields.put(gpa, bar_name_index, .{ .ty = .bool_type });
 
     const aggregate_value = try ip.get(gpa, .{ .aggregate = .{
         .ty = struct_type,
@@ -3764,6 +3769,9 @@ test "union value" {
     var ip = try InternPool.init(gpa);
     defer ip.deinit(gpa);
 
+    const int_name_index = try ip.string_pool.getOrPutString(gpa, "int");
+    const float_name_index = try ip.string_pool.getOrPutString(gpa, "float");
+
     const f16_value = try ip.get(gpa, .{ .float_16_value = 0.25 });
 
     const union_index = try ip.createUnion(gpa, .{
@@ -3775,8 +3783,8 @@ test "union value" {
     });
     const union_type = try ip.get(gpa, .{ .union_type = union_index });
     const union_info = ip.getUnionMut(union_index);
-    try union_info.fields.put(gpa, "int", .{ .ty = .usize_type, .alignment = 0 });
-    try union_info.fields.put(gpa, "float", .{ .ty = .f16_type, .alignment = 0 });
+    try union_info.fields.put(gpa, int_name_index, .{ .ty = .usize_type, .alignment = 0 });
+    try union_info.fields.put(gpa, float_name_index, .{ .ty = .f16_type, .alignment = 0 });
 
     const union_value1 = try ip.get(gpa, .{ .union_value = .{
         .ty = union_type,
