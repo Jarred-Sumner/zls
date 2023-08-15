@@ -2521,6 +2521,17 @@ pub fn isType(ip: *const InternPool, ty: Index) bool {
     };
 }
 
+pub fn isUnknown(ip: *const InternPool, index: Index) bool {
+    switch (index) {
+        .unknown_type => return true,
+        .unknown_unknown => return true,
+        else => switch (ip.items.items(.tag)[@intFromEnum(index)]) {
+            .unknown_value => return true,
+            else => return false,
+        },
+    }
+}
+
 /// Asserts the type is an integer, enum, error set, packed struct, or vector of one of them.
 pub fn intInfo(ip: *const InternPool, ty: Index, target: std.Target) std.builtin.Type.Int {
     var index = ty;
