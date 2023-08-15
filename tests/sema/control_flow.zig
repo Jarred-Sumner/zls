@@ -21,14 +21,13 @@ const gamma = blk: {
     }
 };
 
-// TODO
-// const delta = blk: {
-//     //^^^^^ ()()
-//     if (false) {
-//         break :blk false;
-//     }
-//     unreachable;
-// };
+const delta = blk: {
+    //^^^^^ ()()
+    if (false) {
+        break :blk false;
+    }
+    unreachable;
+};
 
 // TODO
 // const epsilon = blk: {
