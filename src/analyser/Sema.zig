@@ -268,8 +268,8 @@ fn analyzeBodyInner(
             .slice_start                  => .none,
             .slice_length                 => .none,
             .str                          => .none,
-            .switch_block                 => .none,
-            .switch_block_ref             => .none,
+            .switch_block                 => try sema.zirSwitchBlock(block, inst, false),
+            .switch_block_ref             => try sema.zirSwitchBlock(block, inst, true),
             .type_info                    => .none,
             .size_of                      => try sema.getUnknownValue(Index.comptime_int_type),
             .bit_size_of                  => try sema.getUnknownValue(Index.comptime_int_type),
@@ -725,24 +725,7 @@ fn zirBlock(sema: *Sema, parent_block: *Block, inst: Zir.Inst.Index, force_compt
         return try sema.resolveBody(&child_block, body);
     } else {
         _ = try sema.analyzeBodyInner(&child_block, body);
-        const result_types = try sema.arena.alloc(Index, label.merges.items(.result).len);
-        defer sema.arena.free(result_types);
-        for (label.merges.items(.result), result_types) |val, *ty| {
-            ty.* = sema.typeOf(val);
-        }
-        const resolved_ty = try sema.mod.ip.resolvePeerTypes(sema.gpa, result_types, builtin.target);
-        if (resolved_ty == .void_type) {
-            // TODO implement switch_block and other control flow instructions to avoid false positives
-            return .unknown_unknown;
-        }
-        if (resolved_ty == .none) {
-            // TODO error message
-            return .unknown_unknown;
-        }
-        for (label.merges.items(.result), label.merges.items(.src_loc)) |result, src_loc| {
-            _ = try sema.coerce(&child_block, resolved_ty, result, src_loc orelse src);
-        }
-        return try sema.getUnknownValue(resolved_ty);
+        return try sema.analyzeBlockBody(parent_block, src, &child_block, &label.merges);
     }
 }
 
@@ -837,6 +820,34 @@ pub fn analyzeBodyBreak(
         .operand = break_data.operand,
         .inst = break_inst,
     };
+}
+
+fn analyzeBlockBody(
+    sema: *Sema,
+    parent_block: *Block,
+    src: LazySrcLoc,
+    child_block: *Block,
+    merges: *const std.MultiArrayList(Block.Merge),
+) Allocator.Error!Index {
+    _ = parent_block;
+    const result_types = try sema.arena.alloc(Index, merges.items(.result).len);
+    defer sema.arena.free(result_types);
+    for (merges.items(.result), result_types) |val, *ty| {
+        ty.* = sema.typeOf(val);
+    }
+    const resolved_ty = try sema.mod.ip.resolvePeerTypes(sema.gpa, result_types, builtin.target);
+    if (resolved_ty == .void_type) {
+        // TODO implement switch_block and other control flow instructions to avoid false positives
+        return .unknown_unknown;
+    }
+    if (resolved_ty == .none) {
+        // TODO error message
+        return .unknown_unknown;
+    }
+    for (merges.items(.result), merges.items(.src_loc)) |result, src_loc| {
+        _ = try sema.coerce(child_block, resolved_ty, result, src_loc orelse src);
+    }
+    return try sema.getUnknownValue(resolved_ty);
 }
 
 //
@@ -1650,6 +1661,116 @@ fn zirPtrType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!
         .is_allowzero = inst_data.flags.is_allowzero,
         .address_space = address_space,
     } });
+}
+
+fn zirSwitchBlock(sema: *Sema, block: *Block, inst: Zir.Inst.Index, operand_is_ref: bool) Allocator.Error!Index {
+    const tracy = trace(@src());
+    defer tracy.end();
+    if (operand_is_ref) return .none; // TODO
+
+    const inst_data = sema.code.instructions.items(.data)[inst].pl_node;
+    const src = inst_data.src();
+    // const src_node_offset = inst_data.src_node;
+    // const operand_src: LazySrcLoc = .{ .node_offset_switch_operand = src_node_offset };
+    // const special_prong_src: LazySrcLoc = .{ .node_offset_switch_special_prong = src_node_offset };
+    const extra = sema.code.extraData(Zir.Inst.SwitchBlock, inst_data.payload_index);
+
+    const operand = sema.resolveIndex(extra.data.operand);
+    const operand_ty = sema.typeOf(operand);
+
+    var extra_index: usize = extra.end;
+
+    const scalar_cases_len = extra.data.bits.scalar_cases_len;
+    const multi_cases_len = if (extra.data.bits.has_multi_cases) blk: {
+        const multi_cases_len = sema.code.extra[extra_index];
+        extra_index += 1;
+        break :blk multi_cases_len;
+    } else 0;
+    _ = multi_cases_len;
+
+    const tag_capture_inst: ?Zir.Inst.Index = if (extra.data.bits.any_has_tag_capture) blk: {
+        const tag_capture_inst = sema.code.extra[extra_index];
+        extra_index += 1;
+        break :blk tag_capture_inst;
+    } else null;
+    _ = tag_capture_inst;
+
+    const Special = struct {
+        body: []const Zir.Inst.Index,
+        end: usize,
+        capture: Zir.Inst.SwitchBlock.ProngInfo.Capture,
+        is_inline: bool,
+        has_tag_capture: bool,
+    };
+
+    const special_prong = extra.data.bits.specialProng();
+    const special: Special = switch (special_prong) {
+        .none => .{
+            .body = &.{},
+            .end = extra_index,
+            .capture = .none,
+            .is_inline = false,
+            .has_tag_capture = false,
+        },
+        .under, .@"else" => blk: {
+            const info: Zir.Inst.SwitchBlock.ProngInfo = @bitCast(sema.code.extra[extra_index]);
+            const extra_body_start = extra_index + 1;
+            break :blk .{
+                .body = sema.code.extra[extra_body_start..][0..info.body_len],
+                .end = extra_body_start + info.body_len,
+                .capture = info.capture,
+                .is_inline = info.is_inline,
+                .has_tag_capture = info.has_tag_capture,
+            };
+        },
+    };
+    extra_index = special.end;
+
+    var label: Block.Label = .{
+        .zir_block = inst,
+        .merges = .{},
+    };
+
+    var child_block: Block = .{
+        .parent = block,
+        .namespace = block.namespace,
+        .src_decl = block.src_decl,
+        .label = &label,
+        .is_comptime = block.is_comptime,
+    };
+    defer child_block.params.deinit(sema.gpa);
+    defer if (child_block.label) |l| l.merges.deinit(sema.gpa);
+
+    var scalar_i: usize = 0;
+    while (scalar_i != scalar_cases_len) : (scalar_i += 1) {
+        const item: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_index]);
+        extra_index += 1;
+        const info: Zir.Inst.SwitchBlock.ProngInfo = @bitCast(sema.code.extra[extra_index]);
+        extra_index += 1;
+        const body = sema.code.extra[extra_index..][0..info.body_len];
+        extra_index += info.body_len;
+
+        const item_index = sema.resolveIndex(item);
+        const coerceed_item = try sema.coerce(&child_block, operand_ty, item_index, src); // TODO src loc
+
+        if (child_block.is_comptime and operand == coerceed_item) {
+            return try sema.resolveBody(&child_block, body);
+        } else {
+            _ = try sema.analyzeBodyInner(&child_block, body);
+        }
+    }
+
+    // TODO multi_cases
+
+    if (special_prong != .none) {
+        if (child_block.is_comptime) {
+            return try sema.resolveBody(&child_block, special.body);
+        } else {
+            _ = try sema.analyzeBodyInner(&child_block, special.body);
+        }
+    }
+
+    return sema.analyzeBlockBody(block, src, &child_block, &label.merges);
 }
 
 fn zirTypeof(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Index {

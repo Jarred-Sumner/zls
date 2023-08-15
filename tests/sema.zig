@@ -171,8 +171,8 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
 
         if (test_item.expected_type) |expected_type| {
             const val: InternPool.Index = found_decl_index;
-            const ty: InternPool.Index = mod.ip.typeOf(val);
-            const actual_type = try std.fmt.allocPrint(allocator, "{}", .{ty.fmt(mod.ip)});
+            const ty: InternPool.Index = if (val == .none) .none else mod.ip.typeOf(val);
+            const actual_type = try std.fmt.allocPrint(allocator, "{}", .{ty.fmtDebug(mod.ip)});
             defer allocator.free(actual_type);
             if (!std.mem.eql(u8, expected_type, actual_type)) {
                 try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", test_uri, identifier_loc, .err, .{
