@@ -855,6 +855,7 @@ fn analyzeBlockBody(
 //
 
 fn fail(sema: *Sema, block: *Block, src: LazySrcLoc, err: ErrorMsg.Data) Allocator.Error!void {
+    @setCold(true);
     const src_decl = sema.mod.declPtr(block.src_decl);
     const handle = Module.getHandle(src_decl.*, sema.mod);
     const src_loc = src.toSrcLoc(handle, src_decl, sema.mod);
