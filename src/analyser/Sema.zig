@@ -277,9 +277,9 @@ fn analyzeBodyInner(
             .typeof_builtin               => try sema.zirTypeofBuiltin(block, inst),
             .typeof_log2_int_type         => .none,
             .xor                          => .none,
-            .struct_init_empty            => .none,
-            .struct_init                  => .none,
-            .struct_init_ref              => .none,
+            .struct_init_empty            => try sema.zirStructInitEmpty(block, inst),
+            .struct_init                  => try sema.zirStructInit(block, inst, false),
+            .struct_init_ref              => try sema.zirStructInit(block, inst, true),
             .struct_init_anon             => .none,
             .struct_init_anon_ref         => .none,
             .array_init                   => .none,
@@ -1795,6 +1795,37 @@ fn zirTypeofBuiltin(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.
     const operand = try sema.resolveBody(block, body);
     if (operand == .none) return .none;
     return sema.typeOf(operand);
+}
+
+fn zirStructInitEmpty(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Index {
+    const tracy = trace(@src());
+    defer tracy.end();
+
+    const inst_data = sema.code.instructions.items(.data)[inst].un_node;
+    const src = inst_data.src();
+    const ty = try sema.resolveType(block, src, inst_data.operand);
+
+    return try sema.getUnknownValue(ty);
+}
+
+fn zirStructInit(
+    sema: *Sema,
+    block: *Block,
+    inst: Zir.Inst.Index,
+    is_ref: bool,
+) Allocator.Error!Index {
+    _ = is_ref;
+    const zir_datas = sema.code.instructions.items(.data);
+    const inst_data = zir_datas[inst].pl_node;
+    const extra = sema.code.extraData(Zir.Inst.StructInit, inst_data.payload_index);
+    const src = inst_data.src();
+
+    const first_item = sema.code.extraData(Zir.Inst.StructInit.Item, extra.end).data;
+    const first_field_type_data = zir_datas[first_item.field_type].pl_node;
+    const first_field_type_extra = sema.code.extraData(Zir.Inst.FieldType, first_field_type_data.payload_index).data;
+    const ty = try sema.resolveType(block, src, first_field_type_extra.container_type);
+
+    return sema.getUnknownValue(ty);
 }
 
 fn zirTypeofPeer(

@@ -17,3 +17,9 @@ const OuterStruct = struct {
     const V = ?u0;
     //    ^ (type)(?u0)
 };
+
+const some_struct_init = SomeStruct{};
+//    ^^^^^^^^^^^^^^^^ (SomeStruct)()
+
+const other_struct_init = OtherStruct{ .alpha = 5 };
+//    ^^^^^^^^^^^^^^^^^ (OtherStruct)()
