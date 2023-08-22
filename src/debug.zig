@@ -2,6 +2,8 @@ const std = @import("std");
 
 const analysis = @import("analysis.zig");
 const offsets = @import("offsets.zig");
+const InternPool = @import("analyser/InternPool.zig");
+const Module = @import("analyser/Module.zig");
 
 pub fn printTree(tree: std.zig.Ast) void {
     if (!std.debug.runtime_safety) @compileError("this function should only be used in debug mode!");
@@ -67,6 +69,29 @@ pub fn printDocumentScope(doc_scope: analysis.DocumentScope) void {
         while (decl_it.next()) |entry| {
             std.debug.print("    - {s:<8} {}\n", .{ entry.key_ptr.name, entry.value_ptr.* });
         }
+    }
+}
+
+pub fn printDecl(mod: *Module, decl_index: InternPool.DeclIndex, level: usize) void {
+    var decl = mod.declPtr(decl_index);
+    std.io.getStdErr().writer().writeByteNTimes(' ', level * 2) catch {};
+    std.debug.print("Decl({d}) {s}\n", .{ @intFromEnum(decl_index), decl.name });
+    if (decl.index != .none) {
+        const namespace = mod.ip.getNamespace(decl.index);
+        if (namespace == .none) return;
+        printNamespace(mod, namespace, level + 1);
+    }
+}
+
+pub fn printNamespace(mod: *Module, namespace_index: InternPool.NamespaceIndex, level: usize) void {
+    var namespace = mod.namespacePtr(namespace_index);
+    std.io.getStdErr().writer().writeByteNTimes(' ', level * 2) catch {};
+    std.debug.print("Namespace({d}) {}\n", .{ @intFromEnum(namespace_index), namespace.ty.fmtDebug(mod.ip) });
+    for (namespace.decls.keys()) |decl_index| {
+        printDecl(mod, decl_index, level + 1);
+    }
+    for (namespace.anon_decls.keys()) |decl_index| {
+        printDecl(mod, decl_index, level + 1);
     }
 }
 
