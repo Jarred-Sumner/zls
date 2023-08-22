@@ -250,7 +250,7 @@ fn analyzeBodyInner(
             .ret_is_non_err               => try sema.getUnknownValue(Index.bool_type),
             .is_non_null                  => try sema.getUnknownValue(Index.bool_type),
             .is_non_null_ptr              => try sema.getUnknownValue(Index.bool_type),
-            .merge_error_sets             => Index.unknown_type,
+            .merge_error_sets             => try sema.zirMergeErrorSets(block, inst),
             .negate                       => .none,
             .negate_wrap                  => .none,
             .optional_payload_safe        => try sema.zirOptionalPayload(block,inst),
@@ -1533,6 +1533,32 @@ fn zirIntType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!
         .signedness = int_type.signedness,
         .bits = int_type.bit_count,
     } });
+}
+
+fn zirMergeErrorSets(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Index {
+    const tracy = trace(@src());
+    defer tracy.end();
+
+    const inst_data = sema.code.instructions.items(.data)[inst].pl_node;
+    const extra = sema.code.extraData(Zir.Inst.Bin, inst_data.payload_index).data;
+    const src: LazySrcLoc = .{ .node_offset_bin_op = inst_data.src_node };
+    _ = src;
+    const lhs_src: LazySrcLoc = .{ .node_offset_bin_lhs = inst_data.src_node };
+    const rhs_src: LazySrcLoc = .{ .node_offset_bin_rhs = inst_data.src_node };
+    const lhs_ty = try sema.resolveType(block, lhs_src, extra.lhs);
+    const rhs_ty = try sema.resolveType(block, rhs_src, extra.rhs);
+
+    if (sema.mod.ip.isUnknown(lhs_ty) or sema.mod.ip.isUnknown(rhs_ty)) return Index.unknown_type;
+
+    if (sema.mod.ip.zigTypeTag(lhs_ty) != .ErrorSet) {
+        try sema.fail(block, lhs_src, .{ .expected_error_set_type = .{ .actual = lhs_ty } });
+        return .unknown_unknown;
+    } else if (sema.mod.ip.zigTypeTag(rhs_ty) != .ErrorSet) {
+        try sema.fail(block, rhs_src, .{ .expected_error_set_type = .{ .actual = rhs_ty } });
+        return .unknown_unknown;
+    }
+
+    return try sema.mod.ip.errorSetMerge(sema.gpa, lhs_ty, rhs_ty);
 }
 
 fn zirOptionalPayload(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Index {

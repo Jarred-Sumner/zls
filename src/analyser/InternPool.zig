@@ -2735,6 +2735,30 @@ pub fn elemType(ip: *const InternPool, ty: Index) Index {
     };
 }
 
+pub fn errorSetMerge(ip: *InternPool, gpa: std.mem.Allocator, a_ty: Index, b_ty: Index) Allocator.Error!Index {
+    // Anything merged with anyerror is anyerror.
+    if (a_ty == .anyerror_type or b_ty == .anyerror_type) {
+        return .anyerror_type;
+    }
+
+    if (a_ty == b_ty) return a_ty;
+
+    const a_names = ip.indexToKey(a_ty).error_set_type.names;
+    const b_names = ip.indexToKey(b_ty).error_set_type.names;
+
+    var set = std.AutoArrayHashMapUnmanaged(StringPool.String, void){};
+    defer set.deinit(gpa);
+
+    try set.ensureTotalCapacity(gpa, a_names.len + b_names.len);
+
+    for (a_names) |name| set.putAssumeCapacityNoClobber(name, {});
+    for (b_names) |name| set.putAssumeCapacity(name, {});
+
+    return try ip.get(gpa, .{
+        .error_set_type = .{ .owner_decl = .none, .names = set.keys() },
+    });
+}
+
 /// Asserts the type is an array, pointer or vector.
 pub fn sentinel(ip: *const InternPool, ty: Index) Index {
     return switch (ip.indexToKey(ty)) {
