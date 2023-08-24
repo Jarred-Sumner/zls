@@ -14,6 +14,11 @@ message_count: usize = 0,
 /// show error messages with n lines of context.
 /// null will show the whole file
 unified: ?usize = 3,
+file_name_visibility: enum {
+    never,
+    multi_file,
+    always,
+} = .multi_file,
 
 pub fn init(allocator: std.mem.Allocator) ErrorBuilder {
     return ErrorBuilder{ .allocator = allocator };
@@ -206,7 +211,9 @@ fn write(context: FormatContext, writer: anytype) @TypeOf(writer).Error!void {
 
         std.debug.assert(std.sort.isSorted(MsgItem, file.messages.items, file.source, MsgItem.lessThan));
 
-        if (builder.files.count() > 1) {
+        if (builder.file_name_visibility == .always or
+            builder.file_name_visibility == .multi_file and builder.files.count() > 1)
+        {
             try writer.print("{s}:\n", .{file_name});
         }
 
