@@ -161,7 +161,7 @@ fn appendMessage(
     loc: offsets.Loc,
     level: std.log.Level,
 ) error{OutOfMemory}!void {
-    assertFmt(loc.start <= loc.end, "invalid source location {}", .{loc});
+    assertFmt(loc.start <= loc.end, "invalid source location [{d}..{d}]", .{ loc.start, loc.end });
     const file: *File = blk: {
         const file = builder.files.getPtr(file_name);
         assertFmt(file != null, "file '{s}' doesn't exist", .{file_name});
@@ -169,13 +169,13 @@ fn appendMessage(
     };
     assertFmt(
         loc.end <= file.source.len,
-        "source location {} is outside file source (len: {d})",
-        .{ loc, file.source.len },
+        "source location [{d}..{d}] is outside file source (len: {d})",
+        .{ loc.start, loc.end, file.source.len },
     );
     assertFmt(
         std.mem.count(u8, offsets.locToSlice(file.source, loc), "\n") == 0,
-        "source location {} must span a single line",
-        .{loc},
+        "source location [{d}..{d}] must span a single line",
+        .{ loc.start, loc.end },
     );
 
     const Context = struct {
