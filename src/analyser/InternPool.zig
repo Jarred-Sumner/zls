@@ -2532,6 +2532,84 @@ pub fn isUnknown(ip: *const InternPool, index: Index) bool {
     }
 }
 
+pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
+    return switch (ip.indexToKey(index)) {
+        .simple_type => |simple| switch (simple) {
+            .unknown => true,
+            else => false,
+        },
+        .simple_value => false,
+
+        .int_type => false,
+        .pointer_type => |pointer_info| ip.isUnknownDeep(pointer_info.elem_type) or (pointer_info.sentinel != .none and ip.isUnknownDeep(pointer_info.sentinel)),
+        .array_type => |array_info| ip.isUnknownDeep(array_info.child) or (array_info.sentinel != .none and ip.isUnknownDeep(array_info.sentinel)),
+        .struct_type => |struct_index| {
+            const struct_info = ip.getStruct(struct_index);
+            for (struct_info.fields.values()) |field| {
+                if (ip.isUnknownDeep(field.ty)) return true;
+                if (field.default_value != .none and ip.isUnknownDeep(field.default_value)) return true;
+            }
+            // TODO namespace
+            return false;
+        },
+        .optional_type => |optional_info| ip.isUnknownDeep(optional_info.payload_type),
+        .error_union_type => |error_union_info| ip.isUnknownDeep(error_union_info.error_set_type) or ip.isUnknownDeep(error_union_info.payload_type),
+        .error_set_type => false,
+        .enum_type => |enum_index| {
+            const enum_info = ip.getEnum(enum_index);
+            for (enum_info.values.keys()) |val| {
+                if (ip.isUnknownDeep(val)) return true;
+            }
+            // TODO namespace
+            return false;
+        },
+        .function_type => |function_info| {
+            for (function_info.args) |arg_ty| {
+                if (ip.isUnknownDeep(arg_ty)) return true;
+            }
+            if (ip.isUnknownDeep(function_info.return_type)) return true;
+            return false;
+        },
+        .union_type => |union_index| {
+            const union_info = ip.getUnion(union_index);
+            for (union_info.fields.values()) |field| {
+                if (ip.isUnknownDeep(field.ty)) return true;
+            }
+            // TODO namespace
+            return false;
+        },
+        .tuple_type => |tuple_info| {
+            for (tuple_info.types, tuple_info.values) |ty, val| {
+                if (ip.isUnknownDeep(ty)) return true;
+                if (ip.isUnknownDeep(val)) return true;
+            }
+            return false;
+        },
+        .vector_type => |vector_info| ip.isUnknownDeep(vector_info.child),
+        .anyframe_type => |anyframe_info| ip.isUnknownDeep(anyframe_info.child),
+
+        .int_u64_value,
+        .int_i64_value,
+        .int_big_value,
+        .float_16_value,
+        .float_32_value,
+        .float_64_value,
+        .float_80_value,
+        .float_128_value,
+        .float_comptime_value,
+        => false,
+
+        .optional_value,
+        .slice,
+        .aggregate,
+        .union_value,
+        .null_value,
+        .undefined_value,
+        => ip.isUnknownDeep(ip.typeOf(index)),
+        .unknown_value => true,
+    };
+}
+
 /// Asserts the type is an integer, enum, error set, packed struct, or vector of one of them.
 pub fn intInfo(ip: *const InternPool, ty: Index, target: std.Target) std.builtin.Type.Int {
     var index = ty;
