@@ -212,8 +212,9 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
 fn lookupDeclIndex(mod: *Module, handle: zls.DocumentStore.Handle, identifier_loc: offsets.Loc) ?InternPool.Index {
     const identifier = offsets.locToSlice(handle.tree.source, identifier_loc);
     const symbol = Analyser.Declaration.Key{ .kind = .variable, .name = identifier };
-    if (Analyser.lookupDeclaration(handle.document_scope, symbol, identifier_loc.start)) |decl| {
-        switch (decl.*) {
+    if (Analyser.lookupDeclaration(handle.document_scope, symbol, identifier_loc.start)) |decl_index| {
+        const decl = handle.document_scope.decls.items[@intFromEnum(decl_index)];
+        switch (decl) {
             .intern_pool_index => |payload| {
                 std.debug.assert(std.mem.eql(u8, identifier, offsets.tokenToSlice(handle.tree, payload.name)));
                 return payload.index;

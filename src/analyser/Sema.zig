@@ -1125,11 +1125,19 @@ pub fn addDbgVar(
     );
 
     const symbol = Analyser.Declaration.Key{ .kind = .variable, .name = name };
-    const decl = Analyser.lookupDeclaration(handle.document_scope, symbol, source_index) orelse return;
+    const decl_index = Analyser.lookupDeclaration(handle.document_scope, symbol, source_index) orelse return;
+
+    try handle.document_scope.decls.ensureUnusedCapacity(sema.mod.document_store.allocator, 1);
+
+    const decl = &handle.document_scope.decls.items[@intFromEnum(decl_index)];
     const decl_with_handle = Analyser.DeclWithHandle{ .decl = decl, .handle = handle };
+    handle.document_scope.decls.appendAssumeCapacity(decl.*);
+    const fallback_decl_index: Analyser.Declaration.Index = @enumFromInt(handle.document_scope.decls.items.len - 1);
+
     decl.* = Analyser.Declaration{ .intern_pool_index = .{
         .name = decl_with_handle.nameToken(),
         .index = operand,
+        .fallback = fallback_decl_index,
     } };
 }
 

@@ -89,8 +89,7 @@ pub fn hoverSymbol(
         .intern_pool_index => |payload| blk: {
             const name = tree.tokenSlice(payload.name);
             const ip = analyser.ip.?;
-            if (payload.index == .none or ip.isUnknown(payload.index)) break :blk name;
-            break :blk try std.fmt.allocPrint(arena, "{s} = {}", .{ name, payload.index.fmt(ip) });
+            break :blk try std.fmt.allocPrint(arena, "{s}: {} = {}", .{ name, ip.typeOf(payload.index).fmt(ip), payload.index.fmt(ip) });
         },
         .pointer_payload,
         .error_union_payload,
@@ -104,12 +103,7 @@ pub fn hoverSymbol(
     };
 
     var resolved_type_str: []const u8 = "unknown";
-    if (decl_handle.decl.* == .intern_pool_index) blk: {
-        const index = decl_handle.decl.intern_pool_index.index;
-        const ip = analyser.ip.?;
-        if (index == .none or ip.isUnknown(index)) break :blk;
-        resolved_type_str = try std.fmt.allocPrint(arena, "{}", .{ip.typeOf(index).fmt(ip)});
-    } else if (try decl_handle.resolveType(analyser)) |resolved_type| {
+    if (try decl_handle.resolveType(analyser)) |resolved_type| {
         if (doc_str == null) {
             doc_str = try resolved_type.docComments(arena);
         }

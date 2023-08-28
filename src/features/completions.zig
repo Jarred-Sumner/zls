@@ -470,14 +470,22 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
                 .insertTextFormat = .PlainText,
             });
         },
-        .intern_pool_index => |payload| try analyser_completions.dotCompletions(
-            context.arena,
-            context.completions,
-            context.analyser.ip.?,
-            payload.index,
-            false,
-            null,
-        ),
+        .intern_pool_index => |payload| {
+            const ty = (try decl_handle.resolveType(context.analyser)) orelse Analyser.TypeWithHandle{
+                .type = .{ .data = .{ .intern_pool_index = payload.index }, .is_type_val = false },
+                .handle = decl_handle.handle,
+            };
+
+            try typeToCompletion(
+                context.server,
+                context.analyser,
+                context.arena,
+                context.completions,
+                .{ .original = ty },
+                decl_handle.handle,
+                null,
+            );
+        },
     }
 }
 
