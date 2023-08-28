@@ -1220,15 +1220,11 @@ fn zirErrorUnionType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator
     var error_set = try sema.resolveType(block, lhs_src, extra.lhs);
     const payload = try sema.resolveType(block, rhs_src, extra.rhs);
 
-    switch (sema.indexToKey(error_set)) {
-        .error_set_type => {},
-        .unknown_value => {
-            error_set = Index.unknown_type;
-        },
-        else => {
-            try sema.fail(block, lhs_src, .{ .expected_error_set_type = .{ .actual = error_set } });
-            return .unknown_type;
-        },
+    if (sema.mod.ip.isUnknown(error_set)) {
+        error_set = Index.unknown_type;
+    } else if (sema.mod.ip.zigTypeTag(error_set) != .ErrorSet) {
+        try sema.fail(block, lhs_src, .{ .expected_error_set_type = .{ .actual = error_set } });
+        return .unknown_type;
     }
 
     return try sema.get(.{ .error_union_type = .{
