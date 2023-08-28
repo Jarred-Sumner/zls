@@ -23,7 +23,7 @@ test "semantic analysis" {
     var dir = try std.fs.cwd().openIterableDir(path, .{});
     defer dir.close();
 
-    try testSemanticAnalysisRecursiveDir(dir, true);
+    try testSemanticAnalysisRecursiveDir(dir, false);
 }
 
 test "semantic analysis - fuzz on ZLS codebase" {
@@ -34,10 +34,10 @@ test "semantic analysis - fuzz on ZLS codebase" {
     var dir = try std.fs.cwd().openIterableDir(path, .{});
     defer dir.close();
 
-    try testSemanticAnalysisRecursiveDir(dir, false);
+    try testSemanticAnalysisRecursiveDir(dir, true);
 }
 
-fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, check_annotations: bool) !void {
+fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, is_fuzz: bool) !void {
     var iter = dir.iterateAssumeFirstIteration();
     while (try iter.next()) |entry| {
         switch (entry.kind) {
@@ -48,22 +48,24 @@ fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, check_annotations: 
                 var file_content = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
                 defer allocator.free(file_content);
 
-                // var out_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+                var out_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+                const file_path = if (comptime std.os.isGetFdPathSupportedOnTarget(builtin.os)) try std.os.getFdPath(file.handle, &out_buffer) else null;
+
                 // std.debug.print("file: {s}\n", .{try dir.dir.realpath(entry.name, &out_buffer)});
 
-                try testSemanticAnalysis(file_content, check_annotations);
+                try testSemanticAnalysis(file_content, file_path, is_fuzz);
             },
             .directory => {
                 var sub_dir = try dir.dir.openIterableDir(entry.name, .{});
                 defer sub_dir.close();
-                try testSemanticAnalysisRecursiveDir(sub_dir, check_annotations);
+                try testSemanticAnalysisRecursiveDir(sub_dir, is_fuzz);
             },
             else => {},
         }
     }
 }
 
-fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
+fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: bool) !void {
     // a InternPool stores types and values
     var ip = try InternPool.init(allocator);
     defer ip.deinit(allocator);
@@ -132,13 +134,22 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
     // this will resolve the types of all top-level container fields
     // try sema.resolveTypeFieldsStruct(struct_obj);
 
-    if (!check_annotations) return;
-
     var error_builder = ErrorBuilder.init(allocator);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
+    error_builder.file_name_visibility = .always;
 
-    try error_builder.addFile(test_uri, source);
+    const eb_filename = file_path orelse test_uri;
+    try error_builder.addFile(eb_filename, source);
+
+    if (is_fuzz) {
+        if (handle.analysis_errors.items.len == 0) return;
+        for (handle.analysis_errors.items) |err_msg| {
+            // std.debug.print("loc {s}: {}\n", .{ err_msg.message, err_msg.loc });
+            try error_builder.msgAtLoc("unexpected error '{s}'", eb_filename, err_msg.loc, .err, .{err_msg.message});
+        }
+        return error.UnexpectedErrorMessages; // semantic analysis produced errors on its own codebase which are likely false positives
+    }
 
     const annotations = try helper.collectAnnotatedSourceLocations(allocator, source);
     defer allocator.free(annotations);
@@ -154,7 +165,7 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
             } else return error.ErrorNotFound; // definetly not a confusing error name
 
             if (!std.mem.eql(u8, expected_error, actual_error.message)) {
-                try error_builder.msgAtLoc("expected error message '{s}' but got '{s}'", test_uri, annotation.loc, .err, .{
+                try error_builder.msgAtLoc("expected error message '{s}' but got '{s}'", eb_filename, annotation.loc, .err, .{
                     expected_error,
                     actual_error.message,
                 });
@@ -165,7 +176,7 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
         }
 
         const found_decl_index = lookupDeclIndex(&mod, handle.*, identifier_loc) orelse {
-            try error_builder.msgAtLoc("couldn't find identifier `{s}` here", test_uri, identifier_loc, .err, .{identifier});
+            try error_builder.msgAtLoc("couldn't find identifier `{s}` here", eb_filename, identifier_loc, .err, .{identifier});
             return error.IdentifierNotFound;
         };
 
@@ -175,7 +186,7 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
             const actual_type = try std.fmt.allocPrint(allocator, "{}", .{ty.fmtDebug(mod.ip)});
             defer allocator.free(actual_type);
             if (!std.mem.eql(u8, expected_type, actual_type)) {
-                try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", test_uri, identifier_loc, .err, .{
+                try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", eb_filename, identifier_loc, .err, .{
                     expected_type,
                     actual_type,
                 });
@@ -188,7 +199,7 @@ fn testSemanticAnalysis(source: []const u8, check_annotations: bool) !void {
             const actual_value = try std.fmt.allocPrint(allocator, "{}", .{val.fmt(mod.ip)});
             defer allocator.free(actual_value);
             if (!std.mem.eql(u8, expected_value, actual_value)) {
-                try error_builder.msgAtLoc("expected value `{s}` but got `{s}`", test_uri, identifier_loc, .err, .{
+                try error_builder.msgAtLoc("expected value `{s}` but got `{s}`", eb_filename, identifier_loc, .err, .{
                     expected_value,
                     actual_value,
                 });
