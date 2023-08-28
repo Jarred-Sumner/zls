@@ -1432,7 +1432,6 @@ fn zirFunc(
     inst: Zir.Inst.Index,
     inferred_error_set: bool,
 ) Allocator.Error!Index {
-    _ = inferred_error_set;
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -1485,10 +1484,15 @@ fn zirFunc(
         out_arg.* = param.ty;
     }
 
+    const inferred_return_ty = if (inferred_error_set) try sema.get(.{ .error_union_type = .{
+        .error_set_type = .none,
+        .payload_type = ret_ty,
+    } }) else ret_ty;
+
     return try sema.get(InternPool.Key{
         .function_type = InternPool.Function{
             .args = args,
-            .return_type = ret_ty,
+            .return_type = inferred_return_ty,
         },
     });
 }

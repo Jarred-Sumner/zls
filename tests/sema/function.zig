@@ -26,3 +26,7 @@ fn bar() void {
     };
     _ = DeclInFunction;
 }
+
+fn baz() !void {
+// ^^^ (type)(fn() !void)
+}

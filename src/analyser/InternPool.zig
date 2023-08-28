@@ -75,6 +75,7 @@ pub const Optional = struct {
 };
 
 pub const ErrorUnion = struct {
+    // .none if inferred error set
     error_set_type: Index,
     payload_type: Index,
 };
@@ -2008,7 +2009,8 @@ fn coerceInMemoryAllowed(
             }
             const dest_set = dest_key.error_union_type.error_set_type;
             const src_set = src_key.error_union_type.error_set_type;
-            return try ip.coerceInMemoryAllowed(gpa, arena, dest_set, src_set, dest_is_const, target);
+            if (dest_set == .none or src_set == .none) return .ok;
+            return try ip.coerceInMemoryAllowedErrorSets(gpa, arena, dest_set, src_set);
         },
         .ErrorSet => {
             return try ip.coerceInMemoryAllowedErrorSets(gpa, arena, dest_ty, src_ty);
@@ -2553,7 +2555,7 @@ pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
             return false;
         },
         .optional_type => |optional_info| ip.isUnknownDeep(optional_info.payload_type),
-        .error_union_type => |error_union_info| ip.isUnknownDeep(error_union_info.error_set_type) or ip.isUnknownDeep(error_union_info.payload_type),
+        .error_union_type => |error_union_info| ip.isUnknownDeep(error_union_info.payload_type),
         .error_set_type => false,
         .enum_type => |enum_index| {
             const enum_info = ip.getEnum(enum_index);
@@ -3262,7 +3264,9 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
             return optional_info.payload_type;
         },
         .error_union_type => |error_union_info| {
-            try ip.print(error_union_info.error_set_type, writer, options);
+            if (error_union_info.error_set_type != .none) {
+                try ip.print(error_union_info.error_set_type, writer, options);
+            }
             try writer.writeByte('!');
             return error_union_info.payload_type;
         },
