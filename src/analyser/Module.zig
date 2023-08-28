@@ -51,21 +51,6 @@ pub fn getHandle(decl: Decl, mod: *Module) *Handle {
     return mod.namespacePtr(decl.src_namespace).handle;
 }
 
-pub const DeclAdapter = struct {
-    mod: *Module,
-
-    pub fn hash(self: @This(), s: []const u8) u32 {
-        _ = self;
-        return @as(u32, @truncate(std.hash.Wyhash.hash(0, s)));
-    }
-
-    pub fn eql(self: @This(), a: []const u8, b_decl_index: DeclIndex, b_index: usize) bool {
-        _ = b_index;
-        const b_decl = self.mod.declPtr(b_decl_index);
-        return std.mem.eql(u8, a, std.mem.sliceTo(b_decl.name, 0));
-    }
-};
-
 /// The container that structs, enums, unions, and opaques have.
 pub const Namespace = struct {
     /// .none means root Namespace
@@ -73,23 +58,39 @@ pub const Namespace = struct {
     handle: *Handle,
     /// Will be a struct, enum, union, or opaque.
     ty: InternPool.Index,
-    decls: std.ArrayHashMapUnmanaged(DeclIndex, void, DeclContext, true) = .{},
+    decls: std.ArrayHashMapUnmanaged(DeclIndex, void, DeclContext, false) = .{},
     anon_decls: std.AutoArrayHashMapUnmanaged(DeclIndex, void) = .{},
     usingnamespace_set: std.AutoHashMapUnmanaged(DeclIndex, bool) = .{},
 
+    pub const DeclStringAdapter = struct {
+        mod: *Module,
+
+        pub fn hash(self: @This(), s: InternPool.StringPool.String) u32 {
+            const name = self.mod.ip.string_pool.stringToSlice(s);
+            return std.array_hash_map.hashString(name);
+        }
+
+        pub fn eql(self: @This(), a: InternPool.StringPool.String, b_decl_index: DeclIndex, b_index: usize) bool {
+            _ = b_index;
+            const b_decl = self.mod.declPtr(b_decl_index);
+            return a == b_decl.name;
+        }
+    };
+
     pub const DeclContext = struct {
-        module: *Module,
+        mod: *Module,
 
         pub fn hash(ctx: @This(), decl_index: DeclIndex) u32 {
-            const decl = ctx.module.declPtr(decl_index);
-            return @as(u32, @truncate(std.hash.Wyhash.hash(0, std.mem.sliceTo(decl.name, 0))));
+            const name_index = ctx.mod.ip.getDecl(decl_index).name;
+            const decl_name = ctx.mod.ip.string_pool.stringToSlice(name_index);
+            return std.array_hash_map.hashString(decl_name);
         }
 
         pub fn eql(ctx: @This(), a_decl_index: DeclIndex, b_decl_index: DeclIndex, b_index: usize) bool {
             _ = b_index;
-            const a_decl = ctx.module.declPtr(a_decl_index);
-            const b_decl = ctx.module.declPtr(b_decl_index);
-            return std.mem.eql(u8, a_decl.name, b_decl.name);
+            const a_decl_name_index = ctx.mod.ip.getDecl(a_decl_index).name;
+            const b_decl_name_index = ctx.mod.ip.getDecl(b_decl_index).name;
+            return a_decl_name_index == b_decl_name_index;
         }
     };
 
@@ -178,7 +179,6 @@ pub fn destroyNamespace(mod: *Module, namespace_index: InternPool.NamespaceIndex
 }
 
 pub fn destroyDecl(mod: *Module, decl_index: DeclIndex) void {
-    const gpa = mod.gpa;
     const decl = mod.declPtr(decl_index);
     if (decl.index != .none) {
         const namespace = mod.ip.getNamespace(decl.index);
@@ -186,7 +186,6 @@ pub fn destroyDecl(mod: *Module, decl_index: DeclIndex) void {
             mod.destroyNamespace(namespace);
         }
     }
-    gpa.free(decl.name);
     decl.* = undefined;
 }
 
@@ -240,7 +239,7 @@ pub fn semaFile(mod: *Module, handle: *Handle) Allocator.Error!void {
     struct_obj.namespace = namespace_index;
 
     handle.root_decl = decl_index.toOptional();
-    decl.name = try mod.gpa.dupe(u8, handle.uri); // TODO
+    decl.name = try mod.ip.string_pool.getOrPutString(mod.gpa, handle.uri); // TODO
     decl.index = struct_ty;
     decl.alignment = 0;
     decl.analysis = .in_progress;
@@ -284,15 +283,16 @@ pub fn semaDecl(mod: *Module, decl_index: DeclIndex) Allocator.Error!void {
     };
     defer sema.deinit();
 
+    const decl_name = sema.mod.ip.string_pool.stringToSlice(decl.name);
     if (mod.declIsRoot(decl_index)) {
-        log.debug("semaDecl root {d} ({s})", .{ @intFromEnum(decl_index), decl.name });
+        log.debug("semaDecl root {d} ({s})", .{ @intFromEnum(decl_index), decl_name });
         const struct_ty = mod.ip.indexToKey(decl.index).struct_type;
         const struct_obj = mod.ip.getStructMut(struct_ty);
         try sema.analyzeStructDecl(decl, struct_obj.zir_index, struct_obj);
         decl.analysis = .complete;
         return;
     }
-    log.debug("semaDecl {d} ({s})", .{ @intFromEnum(decl_index), decl.name });
+    log.debug("semaDecl {d} ({s})", .{ @intFromEnum(decl_index), decl_name });
 
     var block_scope: Sema.Block = .{
         .parent = null,
@@ -310,5 +310,6 @@ pub fn semaDecl(mod: *Module, decl_index: DeclIndex) Allocator.Error!void {
     decl.index = if (try sema.analyzeBodyBreak(&block_scope, body)) |break_data| sema.resolveIndex(break_data.operand) else .none;
     decl.analysis = .complete;
 
-    try sema.addDbgVar(&block_scope, decl.index, false, decl.name);
+    const decl_name2 = sema.mod.ip.string_pool.stringToSlice(decl.name);
+    try sema.addDbgVar(&block_scope, decl.index, false, decl_name2);
 }

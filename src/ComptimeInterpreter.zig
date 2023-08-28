@@ -268,7 +268,7 @@ pub fn interpret(
 
             const name = analysis.getDeclName(tree, node_idx).?;
             const decl_index = try interpreter.ip.createDecl(interpreter.allocator, .{
-                .name = name,
+                .name = try interpreter.ip.string_pool.getOrPutString(interpreter.allocator, name),
                 .node_idx = node_idx,
                 .src_line = 0, // TODO
                 .index = .none,
@@ -1061,7 +1061,7 @@ pub fn interpret(
                 const decls = &interpreter.namespaces.items(.decls)[@intFromEnum(namespace)];
 
                 const decl_index = try interpreter.ip.createDecl(interpreter.allocator, .{
-                    .name = name,
+                    .name = try interpreter.ip.string_pool.getOrPutString(interpreter.allocator, name),
                     .node_idx = node_idx,
                     .src_line = 0, // TODO
                     .index = function_type,
@@ -1255,7 +1255,7 @@ pub fn call(
 
             const decls = &interpreter.namespaces.items(.decls)[@intFromEnum(fn_namespace)];
             const decl_index = try interpreter.ip.createDecl(interpreter.allocator, .{
-                .name = name,
+                .name = try interpreter.ip.string_pool.getOrPutString(interpreter.allocator, name),
                 .node_idx = name_token,
                 .src_line = 0, // TODO
                 .index = arguments[arg_index].index,

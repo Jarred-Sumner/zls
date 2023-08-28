@@ -1253,7 +1253,8 @@ fn lookupInNamespace(
     const mod = sema.mod;
     _ = block;
 
-    if (namespace.decls.getKeyAdapted(ident_name, Module.DeclAdapter{ .mod = mod })) |decl_index| {
+    const ident_name_index = sema.mod.ip.string_pool.getString(ident_name) orelse return null;
+    if (namespace.decls.getKeyAdapted(ident_name_index, Namespace.DeclStringAdapter{ .mod = mod })) |decl_index| {
         return decl_index;
     }
 
@@ -2008,7 +2009,7 @@ fn resolveAnonymousDeclTypeName(
     name_strategy: Zir.Inst.NameStrategy,
     anon_prefix: []const u8,
     inst: ?Zir.Inst.Index,
-) Allocator.Error![]u8 {
+) Allocator.Error!InternPool.StringPool.String {
     const mod = sema.mod;
     const src_decl = mod.declPtr(block.src_decl);
 
@@ -2020,11 +2021,13 @@ fn resolveAnonymousDeclTypeName(
             // semantically analyzed.
             // This name is also used as the key in the parent namespace so it cannot be
             // renamed.
-            return try std.fmt.allocPrint(sema.gpa, "{s}__{s}_{d}", .{
-                src_decl.name, anon_prefix, @intFromEnum(new_decl_index),
+            const src_decl_name = sema.mod.ip.string_pool.stringToSlice(src_decl.name);
+            const name = try std.fmt.allocPrint(sema.arena, "{s}__{s}_{d}", .{
+                src_decl_name, anon_prefix, @intFromEnum(new_decl_index),
             });
+            return try sema.mod.ip.string_pool.getOrPutString(sema.mod.gpa, name);
         },
-        .parent => return try sema.gpa.dupe(u8, std.mem.sliceTo(mod.declPtr(block.src_decl).name, 0)),
+        .parent => return mod.declPtr(block.src_decl).name,
         .func => {
             return sema.resolveAnonymousDeclTypeName(block, new_decl_index, .anon, anon_prefix, null);
             // TODO
@@ -2064,9 +2067,11 @@ fn resolveAnonymousDeclTypeName(
                 .dbg_var_ptr, .dbg_var_val => {
                     if (zir_data[i].str_op.operand != ref) continue;
 
-                    return try std.fmt.allocPrint(sema.gpa, "{s}.{s}", .{
-                        src_decl.name, zir_data[i].str_op.getStr(sema.code),
+                    const src_decl_name = sema.mod.ip.string_pool.stringToSlice(src_decl.name);
+                    const name = try std.fmt.allocPrint(sema.arena, "{s}.{s}", .{
+                        src_decl_name, zir_data[i].str_op.getStr(sema.code),
                     });
+                    return try sema.mod.ip.string_pool.getOrPutString(sema.mod.gpa, name);
                 },
                 else => {},
             };
@@ -2312,7 +2317,9 @@ pub fn scanNamespace(
 ) Allocator.Error!usize {
     const zir = namespace.handle.zir;
 
-    try namespace.decls.ensureTotalCapacity(sema.gpa, decls_len);
+    try namespace.decls.ensureTotalCapacityContext(sema.gpa, decls_len, Namespace.DeclContext{
+        .mod = sema.mod,
+    });
 
     const bit_bags_count = std.math.divCeil(usize, decls_len, 8) catch unreachable;
     var extra_index = extra_start + bit_bags_count;
@@ -2415,21 +2422,25 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
             }
         },
     };
+    defer gpa.free(decl_name);
+
     const is_exported = export_bit and decl_name_index != 0;
     if (kind == .@"usingnamespace") try namespace.usingnamespace_set.ensureUnusedCapacity(gpa, 1);
+
+    const decl_name_string_index = try mod.ip.string_pool.getOrPutString(mod.gpa, decl_name);
 
     // We create a Decl for it regardless of analysis status.
     const gop = try namespace.decls.getOrPutContextAdapted(
         gpa,
-        decl_name,
-        Module.DeclAdapter{ .mod = mod },
-        Namespace.DeclContext{ .module = mod },
+        decl_name_string_index,
+        Namespace.DeclStringAdapter{ .mod = mod },
+        Namespace.DeclContext{ .mod = mod },
     );
 
     if (!gop.found_existing) {
         const new_decl_index = try mod.allocateNewDecl(namespace_index, decl_node);
         const new_decl = mod.declPtr(new_decl_index);
-        new_decl.name = decl_name;
+        new_decl.name = decl_name_string_index;
         if (kind == .@"usingnamespace") {
             namespace.usingnamespace_set.putAssumeCapacity(new_decl_index, is_pub);
         }
@@ -2443,8 +2454,6 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
         new_decl.zir_decl_index = @as(u32, @intCast(decl_sub_index));
 
         try sema.ensureDeclAnalyzed(new_decl_index);
-    } else {
-        gpa.free(decl_name);
     }
 
     const decl_index = gop.key_ptr.*;

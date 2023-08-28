@@ -222,11 +222,12 @@ fn lookupDeclIndex(mod: *Module, handle: zls.DocumentStore.Handle, identifier_lo
         }
     }
 
+    const identifier_index = mod.ip.string_pool.getString(identifier) orelse return null;
+
     // this is not how you are supposed to lookup identifiers but its good enough for now
     var decl_it = mod.ip.decls.constIterator(0);
-    var index: u32 = 0;
-    while (decl_it.next()) |decl| : (index += 1) {
-        if (!std.mem.eql(u8, decl.name, identifier)) continue;
+    while (decl_it.next()) |decl| {
+        if (decl.name != identifier_index) continue;
         return decl.index;
     }
     return null;

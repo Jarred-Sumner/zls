@@ -211,7 +211,7 @@ pub const OptionalDeclIndex = enum(u32) {
 };
 
 pub const Decl = struct {
-    name: []const u8,
+    name: InternPool.StringPool.String,
     node_idx: u32,
     src_line: u32,
     zir_decl_index: u32 = 0,
@@ -3176,7 +3176,8 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
             const optional_decl_index = ip.getStruct(struct_index).owner_decl;
             const decl_index = optional_decl_index.unwrap() orelse return panicOrElse("TODO", null);
             const decl = ip.getDecl(decl_index);
-            try writer.writeAll(decl.name);
+            const decl_name = ip.string_pool.stringToSlice(decl.name);
+            try writer.writeAll(decl_name);
         },
         .optional_type => |optional_info| {
             try writer.writeByte('?');
@@ -3190,7 +3191,8 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
         .error_set_type => |error_set_info| {
             if (error_set_info.owner_decl.unwrap()) |decl_index| {
                 const decl = ip.getDecl(decl_index);
-                try writer.writeAll(decl.name);
+                const decl_name = ip.string_pool.stringToSlice(decl.name);
+                try writer.writeAll(decl_name);
                 return null;
             }
             const names = error_set_info.names;
