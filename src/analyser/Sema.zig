@@ -1454,8 +1454,8 @@ fn zirFunc(
             const ret_ty_body = sema.code.extra[extra_index..][0..extra.data.ret_body_len];
             extra_index += ret_ty_body.len;
 
-            // TODO
-            break :blk .unknown_unknown;
+            const index = try sema.resolveBody(block, ret_ty_body);
+            break :blk try sema.coerce(block, .type_type, index, ret_ty_src);
         },
     };
 
