@@ -796,7 +796,7 @@ fn resolveBody(
     block: *Block,
     body: []const Zir.Inst.Index,
 ) Allocator.Error!Index {
-    const break_data = try sema.analyzeBodyBreak(block, body) orelse return .none;
+    const break_data = try sema.analyzeBodyBreak(block, body) orelse return .unknown_unknown;
     return sema.resolveIndex(break_data.operand);
 }
 
@@ -1831,7 +1831,6 @@ fn zirTypeofBuiltin(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.
     const body = sema.code.extra[extra.end..][0..extra.data.body_len];
 
     const operand = try sema.resolveBody(block, body);
-    if (operand == .none) return .none;
     return sema.typeOf(operand);
 }
 
