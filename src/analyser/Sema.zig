@@ -1311,11 +1311,13 @@ fn fieldVal(
                         else => {},
                     },
                     .unknown_value => return .unknown_unknown,
-                    .error_set_type => |error_set_info| { // TODO
-                        _ = error_set_info;
+                    .error_set_type => |error_set_info| blk: {
+                        const name_index = sema.mod.ip.string_pool.getString(field_name) orelse break :blk;
+                        if (std.mem.indexOfScalar(StringPool.String, error_set_info.names, name_index) == null) break :blk;
+                        return try sema.getUnknownValue(val); // TODO
                     },
-                    .union_type => {}, // TODO
-                    .enum_type => |enum_index| blk: { // TODO
+                    .union_type => return .unknown_unknown, // TODO
+                    .enum_type => |enum_index| blk: {
                         const enum_info = sema.mod.ip.getEnum(enum_index);
                         const field_name_index = sema.mod.ip.string_pool.getString(field_name) orelse break :blk;
                         const field = enum_info.fields.get(field_name_index) orelse break :blk;

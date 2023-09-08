@@ -19,3 +19,6 @@ const MergedError2 = anyerror || error{ Overflow, OutOfMemory };
 
 const MergedError3 = error{OutOfMemory} || anyerror;
 //    ^^^^^^^^^^^^ (type)(anyerror)
+
+const error_set_field_access = error{ OutOfMemory, Overflow }.OutOfMemory;
+//    ^^^^^^^^^^^^^^^^^^^^^^ (error{OutOfMemory,Overflow})()
