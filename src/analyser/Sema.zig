@@ -1238,8 +1238,10 @@ fn lookupIdentifier(sema: *Sema, block: *Block, name: []const u8) !?DeclIndex {
 
     while (namespace_index != .none) {
         const namespace = sema.mod.namespacePtr(namespace_index);
-        if (try sema.lookupInNamespace(block, namespace, name)) |decl_index| {
-            return decl_index;
+        switch (try sema.lookupInNamespace(block, namespace, name)) {
+            .found => |decl_index| return decl_index,
+            .unknown => {}, // TODO does this produce false positives?
+            .missing => {},
         }
         namespace_index = namespace.parent;
     }
@@ -1248,21 +1250,32 @@ fn lookupIdentifier(sema: *Sema, block: *Block, name: []const u8) !?DeclIndex {
     // unreachable; // AstGen detects use of undeclared identifier errors.
 }
 
+const LookupResult = union(enum) {
+    found: DeclIndex,
+    unknown,
+    missing,
+};
+
 fn lookupInNamespace(
     sema: *Sema,
     block: *Block,
     namespace: *Namespace,
     ident_name: []const u8,
-) Allocator.Error!?DeclIndex {
+) Allocator.Error!LookupResult {
     const mod = sema.mod;
     _ = block;
 
-    const ident_name_index = sema.mod.ip.string_pool.getString(ident_name) orelse return null;
+    const ident_name_index = sema.mod.ip.string_pool.getString(ident_name) orelse return .missing;
     if (namespace.decls.getKeyAdapted(ident_name_index, Namespace.DeclStringAdapter{ .mod = mod })) |decl_index| {
-        return decl_index;
+        return .{ .found = decl_index };
     }
 
-    return null;
+    if (namespace.usingnamespace_set.count() != 0) {
+        // TODO support usingnamespace
+        return .unknown;
+    }
+
+    return .missing;
 }
 
 fn zirFieldVal(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Index {
@@ -1299,9 +1312,13 @@ fn fieldVal(
                 const namespace_index = sema.mod.ip.getNamespace(val);
 
                 if (namespace_index != .none) {
-                    if (try sema.lookupInNamespace(block, sema.mod.namespacePtr(namespace_index), field_name)) |decl_index| {
-                        const decl = sema.mod.declPtr(decl_index);
-                        return decl.index;
+                    switch (try sema.lookupInNamespace(block, sema.mod.namespacePtr(namespace_index), field_name)) {
+                        .found => |decl_index| {
+                            const decl = sema.mod.declPtr(decl_index);
+                            return decl.index;
+                        },
+                        .unknown => return .unknown_unknown,
+                        .missing => {},
                     }
                 }
 
