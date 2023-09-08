@@ -645,7 +645,7 @@ fn analyzeBodyInner(
         if (index_ty == .noreturn_type) {
             break always_noreturn;
         }
-        if (index != .none) {
+        if (index != .none and index != .unknown_unknown) {
             map.putAssumeCapacity(inst, index);
         }
     } else always_noreturn;
