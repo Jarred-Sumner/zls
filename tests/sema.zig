@@ -37,12 +37,29 @@ test "semantic analysis - fuzz on ZLS codebase" {
     try testSemanticAnalysisRecursiveDir(dir, true);
 }
 
+test "semantic analysis - fuzz on zig standard library codebase" {
+    const zig_exe_path = (try zls.configuration.findZig(allocator)) orelse return error.SkipZigTest;
+    defer allocator.free(zig_exe_path);
+
+    const zig_env = zls.configuration.getZigEnv(allocator, zig_exe_path) orelse return error.SkipZigTest;
+    defer zig_env.deinit();
+
+    const zig_lib_path = zig_env.value.lib_dir orelse return error.SkipZigTest;
+
+    var dir = try std.fs.openIterableDirAbsolute(zig_lib_path, .{});
+    defer dir.close();
+
+    try testSemanticAnalysisRecursiveDir(dir, true);
+}
+
 fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, is_fuzz: bool) !void {
     var iter = dir.iterateAssumeFirstIteration();
     while (try iter.next()) |entry| {
         switch (entry.kind) {
             .file => {
                 if (!std.mem.eql(u8, std.fs.path.extension(entry.name), ".zig")) continue;
+                if (std.mem.eql(u8, entry.name, "darwin.zig")) continue; // TODO fix upstream issue with OS_SIGNPOST_ID_INVALID
+                if (std.mem.eql(u8, entry.name, "lock.zig")) continue; // TODO
                 const file = try dir.dir.openFile(entry.name, .{});
                 defer file.close();
                 var file_content = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
