@@ -310,17 +310,6 @@ pub fn refreshDocument(self: *DocumentStore, uri: Uri, new_text: [:0]const u8) !
     const new_import_count = handle.import_uris.items.len;
     const new_cimport_count = handle.cimports.len;
 
-    if (handle.root_decl.unwrap()) |decl_index| {
-        self.mod.?.destroyDecl(decl_index);
-        handle.root_decl = .none;
-    }
-    if (self.config.analysis_backend == .astgen_analyser and
-        handle.zir_status == .done and // TODO support oudated
-        !handle.zir.hasCompileErrors())
-    {
-        try self.mod.?.semaFile(handle);
-    }
-
     if (old_import_count != new_import_count or
         old_cimport_count != new_cimport_count)
     {

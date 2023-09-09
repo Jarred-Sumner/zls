@@ -868,8 +868,9 @@ pub fn updateConfiguration(server: *Server, new_config: configuration.Configurat
     if (new_zig_exe_path or new_zig_lib_path) {
         server.document_store.cimports.clearAndFree(server.document_store.allocator);
     }
-    
-    if (server.config.analysis_backend == .astgen_analyser) {
+
+    if (server.config.analysis_backend == .astgen_analyser) blk: {
+        if (server.mod != null) break :blk;
         server.mod = Module.init(server.allocator, &server.ip, &server.document_store);
         server.document_store.mod = &server.mod.?;
     } else if (server.mod) |*mod| {
@@ -892,7 +893,6 @@ pub fn updateConfiguration(server: *Server, new_config: configuration.Configurat
         );
         server.allocator.free(json_message);
     }
-
 
     // <---------------------------------------------------------->
     //  don't modify config options after here, only show messages
