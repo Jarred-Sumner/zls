@@ -472,7 +472,10 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
         },
         .intern_pool_index => |payload| {
             const ty = (try decl_handle.resolveType(context.analyser)) orelse Analyser.TypeWithHandle{
-                .type = .{ .data = .{ .intern_pool_index = payload.index }, .is_type_val = false },
+                .type = .{ .data = .{ .ip_index = .{
+                    .node = 0,
+                    .index = payload.index,
+                } }, .is_type_val = false },
                 .handle = decl_handle.handle,
             };
 
