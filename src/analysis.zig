@@ -1207,7 +1207,7 @@ fn resolveTypeOfNodeUncached(analyser: *Analyser, node_handle: NodeWithHandle) e
                             .node = value.node_idx,
                             .index = value.index,
                         } },
-                        .is_type_val = interpreter.ip.isType(value.index),
+                        .is_type_val = false,
                     },
                     .handle = node_handle.handle,
                 };

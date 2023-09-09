@@ -11,14 +11,13 @@ pub fn dotCompletions(
     completions: *std.ArrayListUnmanaged(types.CompletionItem),
     ip: *InternPool,
     index: InternPool.Index,
-    is_type_val: bool,
     node: ?Ast.Node.Index,
 ) error{OutOfMemory}!void {
     std.debug.assert(index != .none);
     _ = node;
 
-    const val: InternPool.Index = if (is_type_val) index else .none;
-    const ty: InternPool.Index = if (is_type_val) ip.typeOf(index) else index;
+    const val: InternPool.Index = index;
+    const ty: InternPool.Index = ip.typeOf(index);
 
     const inner_ty = switch (ip.indexToKey(ty)) {
         .pointer_type => |pointer_info| if (pointer_info.size == .One) pointer_info.elem_type else ty,
