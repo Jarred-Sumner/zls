@@ -632,6 +632,7 @@ pub fn interpret(
                 .aggregate,
                 .union_value,
                 .null_value,
+                .error_value,
                 .undefined_value,
                 .unknown_value,
                 => unreachable,

@@ -42,7 +42,7 @@ pub fn dotCompletions(
                             try completions.append(arena, .{
                                 .label = error_name,
                                 .kind = .Constant,
-                                .detail = try std.fmt.allocPrint(arena, "error.{s}", .{std.zig.fmtId(error_name)}),
+                                .detail = try std.fmt.allocPrint(arena, "error.{}", .{std.zig.fmtId(error_name)}),
                             });
                         }
                     },
@@ -169,6 +169,7 @@ pub fn dotCompletions(
         .slice,
         .aggregate,
         .union_value,
+        .error_value,
         .null_value,
         .undefined_value,
         .unknown_value,

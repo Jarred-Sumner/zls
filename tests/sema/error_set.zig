@@ -21,4 +21,7 @@ const MergedError3 = error{OutOfMemory} || anyerror;
 //    ^^^^^^^^^^^^ (type)(anyerror)
 
 const error_set_field_access = error{ OutOfMemory, Overflow }.OutOfMemory;
-//    ^^^^^^^^^^^^^^^^^^^^^^ (error{OutOfMemory,Overflow})()
+//    ^^^^^^^^^^^^^^^^^^^^^^ (error{OutOfMemory,Overflow})(error.OutOfMemory)
+
+const single_value_error_set_shortcut = error.OutOfMemory;
+//    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ (error{OutOfMemory})(error.OutOfMemory)

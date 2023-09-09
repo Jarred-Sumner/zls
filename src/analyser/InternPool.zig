@@ -177,6 +177,11 @@ pub const UnionValue = struct {
     val: Index,
 };
 
+pub const ErrorValue = struct {
+    ty: Index,
+    error_tag_name: StringPool.String,
+};
+
 pub const NullValue = struct {
     ty: Index,
 };
@@ -276,11 +281,11 @@ pub const Key = union(enum) {
     slice: Slice,
     aggregate: Aggregate,
     union_value: UnionValue,
+    error_value: ErrorValue,
     null_value: NullValue,
     undefined_value: UndefinedValue,
     unknown_value: UnknownValue,
 
-    // error
     // error union
 
     pub fn eql(a: Key, b: Key) bool {
@@ -329,6 +334,7 @@ pub const Key = union(enum) {
             .slice => .slice,
             .aggregate => .aggregate,
             .union_value => .union_value,
+            .error_value => .error_value,
             .null_value => .null_value,
             .undefined_value => .undefined_value,
             .unknown_value => .unknown_value,
@@ -574,6 +580,9 @@ pub const Tag = enum(u8) {
     /// A union value.
     /// data is index to UnionValue.
     union_value,
+    /// A error value.
+    /// data is index to ErrorValue.
+    error_value,
     /// A null value.
     /// data is index to type which may be unknown.
     null_value,
@@ -845,6 +854,7 @@ pub fn indexToKey(ip: *const InternPool, index: Index) Key {
         .slice => .{ .slice = ip.extraData(Slice, data) },
         .aggregate => .{ .aggregate = ip.extraData(Aggregate, data) },
         .union_value => .{ .union_value = ip.extraData(UnionValue, data) },
+        .error_value => .{ .error_value = ip.extraData(ErrorValue, data) },
         .null_value => .{ .null_value = .{ .ty = @as(Index, @enumFromInt(data)) } },
         .undefined_value => .{ .undefined_value = .{ .ty = @as(Index, @enumFromInt(data)) } },
         .unknown_value => .{ .unknown_value = .{ .ty = @as(Index, @enumFromInt(data)) } },
@@ -2424,6 +2434,7 @@ pub fn zigTypeTag(ip: *const InternPool, index: Index) std.builtin.TypeId {
         .slice,
         .union_value,
         .null_value,
+        .error_value,
         .undefined_value,
         .unknown_value,
         => unreachable,
@@ -2474,6 +2485,7 @@ pub fn typeOf(ip: *const InternPool, index: Index) Index {
         .aggregate => ip.extraData(Aggregate, data).ty,
         .slice => ip.extraData(Slice, data).ty,
         .union_value => ip.extraData(UnionValue, data).ty,
+        .error_value => ip.extraData(ErrorValue, data).ty,
 
         .null_value,
         .undefined_value,
@@ -2516,6 +2528,7 @@ pub fn isType(ip: *const InternPool, ty: Index) bool {
         .aggregate,
         .slice,
         .union_value,
+        .error_value,
         .null_value,
         .undefined_value,
         => false,
@@ -2605,6 +2618,7 @@ pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
         .slice,
         .aggregate,
         .union_value,
+        .error_value,
         .null_value,
         .undefined_value,
         => ip.isUnknownDeep(ip.typeOf(index)),
@@ -2980,6 +2994,7 @@ pub fn onePossibleValue(ip: *const InternPool, ty: Index) Index {
         .slice,
         .aggregate,
         .union_value,
+        .error_value,
         .null_value,
         .undefined_value,
         .unknown_value,
@@ -3027,6 +3042,7 @@ pub fn canHaveFields(ip: *const InternPool, ty: Index) bool {
         .slice,
         .aggregate,
         .union_value,
+        .error_value,
         .null_value,
         .undefined_value,
         .unknown_value,
@@ -3404,6 +3420,10 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
                 std.zig.fmtId(name),
                 union_value.val.fmtOptions(ip, options),
             });
+        },
+        .error_value => |error_value| {
+            const name = ip.string_pool.stringToSlice(error_value.error_tag_name);
+            try writer.print("error.{}", .{std.zig.fmtId(name)});
         },
         .null_value => try writer.print("null", .{}),
         .undefined_value => try writer.print("undefined", .{}),
