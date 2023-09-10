@@ -3120,7 +3120,7 @@ pub fn toInt(ip: *const InternPool, val: Index, comptime T: type) !?T {
             .the_only_possible_value => 0,
             else => null,
         },
-        .int_u64_value => |int_value| int_value.int,
+        .int_u64_value => |int_value| @intCast(int_value.int),
         .int_i64_value => |int_value| @intCast(int_value.int),
         .int_big_value => |int_value| int_value.int.to(T) catch null,
         .null_value => 0,

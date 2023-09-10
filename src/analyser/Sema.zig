@@ -774,8 +774,9 @@ fn resolveInt(
     dest_ty: Index,
     reason: []const u8,
 ) !?u64 {
+    std.debug.assert(sema.mod.ip.isType(dest_ty));
     const index = sema.resolveIndex(zir_ref);
-    return sema.analyzeAsInt(block, src, index, dest_ty, reason);
+    return try sema.analyzeAsInt(block, src, index, dest_ty, reason);
 }
 
 fn analyzeAsInt(
@@ -786,9 +787,10 @@ fn analyzeAsInt(
     dest_ty: Index,
     reason: []const u8,
 ) !?u64 {
+    std.debug.assert(sema.mod.ip.isType(dest_ty));
     _ = reason;
     const coerced = try sema.coerce(block, dest_ty, inst, src);
-    return sema.mod.ip.toInt(coerced, u64);
+    return try sema.mod.ip.toInt(coerced, u64);
 }
 
 fn resolveBody(
@@ -1676,7 +1678,7 @@ fn zirPtrType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!
     const inst_data = sema.code.instructions.items(.data)[inst].ptr_type;
     const extra = sema.code.extraData(Zir.Inst.PtrType, inst_data.payload_index);
     const elem_ty_src: LazySrcLoc = .{ .node_offset_ptr_elem = extra.data.src_node };
-    // const sentinel_src: LazySrcLoc = .{ .node_offset_ptr_sentinel = extra.data.src_node };
+    const sentinel_src: LazySrcLoc = .{ .node_offset_ptr_sentinel = extra.data.src_node };
     const align_src: LazySrcLoc = .{ .node_offset_ptr_align = extra.data.src_node };
     // const addrspace_src: LazySrcLoc = .{ .node_offset_ptr_addrspace = extra.data.src_node };
     const bitoffset_src: LazySrcLoc = .{ .node_offset_ptr_bitoffset = extra.data.src_node };
@@ -1687,38 +1689,38 @@ fn zirPtrType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!
     var extra_i = extra.end;
 
     const sentinel = if (inst_data.flags.has_sentinel) blk: {
-        const ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_i]));
+        const ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_i]);
         extra_i += 1;
-        break :blk sema.resolveIndex(ref);
+        break :blk try sema.coerce(block, elem_ty, sema.resolveIndex(ref), sentinel_src);
     } else .none;
 
     const abi_align: u16 = if (inst_data.flags.has_align) blk: {
-        const ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_i]));
+        const ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_i]);
         extra_i += 1;
-        const abi_align = (try sema.resolveInt(block, align_src, ref, .u16_type, "pointer alignment must be comptime-known")) orelse 0;
-        break :blk @as(u16, @intCast(abi_align));
+        const coersed = try sema.coerce(block, .u16_type, sema.resolveIndex(ref), align_src);
+        break :blk try sema.mod.ip.toInt(coersed, u16) orelse 0;
     } else 0;
 
     const address_space: std.builtin.AddressSpace = if (inst_data.flags.has_addrspace) blk: {
-        const ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_i]));
-        _ = ref;
+        const ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_i]);
         extra_i += 1;
+        _ = ref;
         // TODO
         break :blk .generic;
     } else .generic;
 
     const bit_offset: u16 = if (inst_data.flags.has_bit_range) blk: {
-        const ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_i]));
+        const ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_i]);
         extra_i += 1;
-        const bit_offset = (try sema.resolveInt(block, bitoffset_src, ref, .u16_type, "pointer bit-offset must be comptime-known")) orelse 0;
-        break :blk @as(u16, @intCast(bit_offset));
+        const coersed = try sema.coerce(block, .u16_type, sema.resolveIndex(ref), bitoffset_src);
+        break :blk try sema.mod.ip.toInt(coersed, u16) orelse 0;
     } else 0;
 
     const host_size: u16 = if (inst_data.flags.has_bit_range) blk: {
-        const ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_i]));
+        const ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_i]);
         extra_i += 1;
-        const host_size = (try sema.resolveInt(block, hostsize_src, ref, .u16_type, "pointer host size must be comptime-known")) orelse 0;
-        break :blk @as(u16, @intCast(host_size));
+        const coersed = try sema.coerce(block, .u16_type, sema.resolveIndex(ref), hostsize_src);
+        break :blk try sema.mod.ip.toInt(coersed, u16) orelse 0;
     } else 0;
 
     return try sema.get(.{ .pointer_type = .{
