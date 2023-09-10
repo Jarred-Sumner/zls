@@ -1411,14 +1411,16 @@ fn fieldVal(
                 .aggregate => |aggregate| aggregate.values[field_index],
                 .undefined_value => try sema.getUndefinedValue(field.ty),
                 .unknown_value => try sema.getUnknownValue(field.ty),
-                else => unreachable, // TODO return error.InvalidOperation
+                else => unreachable,
             };
         },
         .enum_type => |enum_info| { // TODO
             _ = enum_info;
+            return .unknown_unknown;
         },
         .union_type => |union_info| { // TODO
             _ = union_info;
+            return .unknown_unknown;
         },
         .int_type,
         .error_union_type,
