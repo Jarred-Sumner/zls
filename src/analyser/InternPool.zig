@@ -2547,7 +2547,15 @@ pub fn isUnknown(ip: *const InternPool, index: Index) bool {
     }
 }
 
-pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
+pub fn isUnknownDeep(ip: *const InternPool, gpa: std.mem.Allocator, index: Index) Allocator.Error!bool {
+    var set = std.AutoHashMap(Index, void).init(gpa);
+    defer set.deinit();
+    return try ip.isUnknownDeepInternal(index, &set);
+}
+
+fn isUnknownDeepInternal(ip: *const InternPool, index: Index, set: *std.AutoHashMap(Index, void)) Allocator.Error!bool {
+    const gop = try set.getOrPut(index);
+    if (gop.found_existing) return false;
     return switch (ip.indexToKey(index)) {
         .simple_type => |simple| switch (simple) {
             .unknown => true,
@@ -2556,52 +2564,60 @@ pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
         .simple_value => false,
 
         .int_type => false,
-        .pointer_type => |pointer_info| ip.isUnknownDeep(pointer_info.elem_type) or (pointer_info.sentinel != .none and ip.isUnknownDeep(pointer_info.sentinel)),
-        .array_type => |array_info| ip.isUnknownDeep(array_info.child) or (array_info.sentinel != .none and ip.isUnknownDeep(array_info.sentinel)),
+        .pointer_type => |pointer_info| {
+            if (try ip.isUnknownDeepInternal(pointer_info.elem_type, set)) return true;
+            if (pointer_info.sentinel != .none and try ip.isUnknownDeepInternal(pointer_info.sentinel, set)) return true;
+            return false;
+        },
+        .array_type => |array_info| {
+            if (try ip.isUnknownDeepInternal(array_info.child, set)) return true;
+            if (array_info.sentinel != .none and try ip.isUnknownDeepInternal(array_info.sentinel, set)) return true;
+            return false;
+        },
         .struct_type => |struct_index| {
             const struct_info = ip.getStruct(struct_index);
             for (struct_info.fields.values()) |field| {
-                if (ip.isUnknownDeep(field.ty)) return true;
-                if (field.default_value != .none and ip.isUnknownDeep(field.default_value)) return true;
+                if (try ip.isUnknownDeepInternal(field.ty, set)) return true;
+                if (field.default_value != .none and try ip.isUnknownDeepInternal(field.default_value, set)) return true;
             }
             // TODO namespace
             return false;
         },
-        .optional_type => |optional_info| ip.isUnknownDeep(optional_info.payload_type),
-        .error_union_type => |error_union_info| ip.isUnknownDeep(error_union_info.payload_type),
+        .optional_type => |optional_info| try ip.isUnknownDeepInternal(optional_info.payload_type, set),
+        .error_union_type => |error_union_info| try ip.isUnknownDeepInternal(error_union_info.payload_type, set),
         .error_set_type => false,
         .enum_type => |enum_index| {
             const enum_info = ip.getEnum(enum_index);
             for (enum_info.values.keys()) |val| {
-                if (ip.isUnknownDeep(val)) return true;
+                if (try ip.isUnknownDeepInternal(val, set)) return true;
             }
             // TODO namespace
             return false;
         },
         .function_type => |function_info| {
             for (function_info.args) |arg_ty| {
-                if (ip.isUnknownDeep(arg_ty)) return true;
+                if (try ip.isUnknownDeepInternal(arg_ty, set)) return true;
             }
-            if (ip.isUnknownDeep(function_info.return_type)) return true;
+            if (try ip.isUnknownDeepInternal(function_info.return_type, set)) return true;
             return false;
         },
         .union_type => |union_index| {
             const union_info = ip.getUnion(union_index);
             for (union_info.fields.values()) |field| {
-                if (ip.isUnknownDeep(field.ty)) return true;
+                if (try ip.isUnknownDeepInternal(field.ty, set)) return true;
             }
             // TODO namespace
             return false;
         },
         .tuple_type => |tuple_info| {
             for (tuple_info.types, tuple_info.values) |ty, val| {
-                if (ip.isUnknownDeep(ty)) return true;
-                if (ip.isUnknownDeep(val)) return true;
+                if (try ip.isUnknownDeepInternal(ty, set)) return true;
+                if (try ip.isUnknownDeepInternal(val, set)) return true;
             }
             return false;
         },
-        .vector_type => |vector_info| ip.isUnknownDeep(vector_info.child),
-        .anyframe_type => |anyframe_info| ip.isUnknownDeep(anyframe_info.child),
+        .vector_type => |vector_info| try ip.isUnknownDeepInternal(vector_info.child, set),
+        .anyframe_type => |anyframe_info| try ip.isUnknownDeepInternal(anyframe_info.child, set),
 
         .int_u64_value,
         .int_i64_value,
@@ -2621,7 +2637,7 @@ pub fn isUnknownDeep(ip: *const InternPool, index: Index) bool {
         .error_value,
         .null_value,
         .undefined_value,
-        => ip.isUnknownDeep(ip.typeOf(index)),
+        => try ip.isUnknownDeepInternal(ip.typeOf(index), set),
         .unknown_value => true,
     };
 }
