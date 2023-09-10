@@ -31,20 +31,20 @@ index_map: IndexMap = .{},
 src: LazySrcLoc = .{ .token_offset = 0 },
 debug_src: Zir.Inst.LineColumn = .{ .line = 0, .column = 0 },
 
-pub const IndexMap = struct {
+const IndexMap = struct {
     items: []Index = &[_]Index{},
     start: Zir.Inst.Index = 0,
 
-    pub fn deinit(map: IndexMap, allocator: Allocator) void {
+    fn deinit(map: IndexMap, allocator: Allocator) void {
         allocator.free(map.items);
     }
 
-    pub fn get(map: IndexMap, key: Zir.Inst.Index) ?Index {
+    fn get(map: IndexMap, key: Zir.Inst.Index) ?Index {
         if (!map.contains(key)) return null;
         return map.items[key - map.start];
     }
 
-    pub fn putAssumeCapacity(
+    fn putAssumeCapacity(
         map: *IndexMap,
         key: Zir.Inst.Index,
         index: Index,
@@ -52,7 +52,7 @@ pub const IndexMap = struct {
         map.items[key - map.start] = index;
     }
 
-    pub fn putAssumeCapacityNoClobber(
+    fn putAssumeCapacityNoClobber(
         map: *IndexMap,
         key: Zir.Inst.Index,
         index: Index,
@@ -61,12 +61,12 @@ pub const IndexMap = struct {
         map.putAssumeCapacity(key, index);
     }
 
-    pub const GetOrPutResult = struct {
+    const GetOrPutResult = struct {
         value_ptr: *Index,
         found_existing: bool,
     };
 
-    pub fn getOrPutAssumeCapacity(
+    fn getOrPutAssumeCapacity(
         map: *IndexMap,
         key: Zir.Inst.Index,
     ) GetOrPutResult {
@@ -77,17 +77,17 @@ pub const IndexMap = struct {
         };
     }
 
-    pub fn remove(map: IndexMap, key: Zir.Inst.Index) bool {
+    fn remove(map: IndexMap, key: Zir.Inst.Index) bool {
         if (!map.contains(key)) return false;
         map.items[key - map.start] = .none;
         return true;
     }
 
-    pub fn contains(map: IndexMap, key: Zir.Inst.Index) bool {
+    fn contains(map: IndexMap, key: Zir.Inst.Index) bool {
         return map.items[key - map.start] != .none;
     }
 
-    pub fn ensureSpaceForInstructions(
+    fn ensureSpaceForInstructions(
         map: *IndexMap,
         allocator: Allocator,
         insts: []const Zir.Inst.Index,
