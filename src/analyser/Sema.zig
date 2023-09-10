@@ -2137,12 +2137,15 @@ fn coerce(
     inst_src: LazySrcLoc,
 ) Allocator.Error!Index {
     assert(sema.mod.ip.isType(dest_ty));
-    const result = try sema.mod.ip.coerce(sema.gpa, sema.arena, dest_ty, inst, builtin.target);
-    if (result != .none) return result;
 
-    try sema.fail(block, inst_src, .{ .expected_type = .{ .expected_type = dest_ty, .actual = inst } });
+    var err_msg = ErrorMsg.Data{ .expected_type = .{ .expected_type = dest_ty, .actual = inst } };
+    const result = try sema.mod.ip.coerce(sema.gpa, sema.arena, dest_ty, inst, builtin.target, &err_msg);
+    if (result == .none) {
+        try sema.fail(block, inst_src, err_msg);
+        return sema.getUnknownValue(dest_ty);
+    }
 
-    return sema.getUnknownValue(dest_ty);
+    return result;
 }
 
 //

@@ -13,6 +13,7 @@ const offsets = @import("offsets.zig");
 const DocumentStore = @import("DocumentStore.zig");
 
 pub const InternPool = @import("analyser/InternPool.zig");
+pub const ErrorMsg = @import("analyser/ErrorMsg.zig");
 pub const Index = InternPool.Index;
 pub const Key = InternPool.Key;
 pub const ComptimeInterpreter = @This();
@@ -800,8 +801,9 @@ pub fn interpret(
             var arena_allocator = std.heap.ArenaAllocator.init(interpreter.allocator);
             defer arena_allocator.deinit();
 
+            var err_msg: ErrorMsg.Data = undefined;
             // TODO report error
-            _ = try interpreter.ip.coerce(interpreter.allocator, arena_allocator.allocator(), to_ty, from_val.index, builtin.target);
+            _ = try interpreter.ip.coerce(interpreter.allocator, arena_allocator.allocator(), to_ty, from_val.index, builtin.target, &err_msg);
 
             return InterpretResult{ .nothing = {} };
         },

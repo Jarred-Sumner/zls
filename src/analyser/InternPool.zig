@@ -21,6 +21,7 @@ const expectFmt = std.testing.expectFmt;
 
 pub const StringPool = @import("StringPool.zig");
 const encoding = @import("encoding.zig");
+const ErrorMsg = @import("ErrorMsg.zig");
 
 pub const Pointer = struct {
     elem_type: Index,
@@ -1105,6 +1106,11 @@ fn deepHash(hasher: anytype, key: anytype) void {
 //                    UTILITY
 // ---------------------------------------------
 
+// pub const CoercionResult = union(enum) {
+//     ok: Index,
+//     err: ErrorMsg,
+// };
+
 /// @as(dest_ty, inst);
 pub fn coerce(
     ip: *InternPool,
@@ -1113,6 +1119,9 @@ pub fn coerce(
     dest_ty: Index,
     inst: Index,
     target: std.Target,
+    /// TODO make this a return value instead of out pointer
+    /// see `CoercionResult`
+    err_msg: *ErrorMsg.Data,
 ) Allocator.Error!Index {
     assert(ip.isType(dest_ty));
     switch (ip.typeOf(dest_ty)) {
@@ -1143,7 +1152,7 @@ pub fn coerce(
             }
 
             // T to ?T
-            const intermediate = try ip.coerce(gpa, arena, child_type, inst, target);
+            const intermediate = try ip.coerce(gpa, arena, child_type, inst, target, err_msg);
             if (intermediate == .none) break :optional;
 
             return try ip.get(gpa, .{ .optional_value = .{
@@ -1254,8 +1263,10 @@ pub fn coerce(
                 if (try ip.intFitsInType(inst, dest_ty, target)) {
                     return try ip.coerceInt(gpa, dest_ty, inst);
                 } else {
-                    // TODO compile error
-                    // std.debug.panic("type '{}' cannot represent integer value '{}'", .{ dest_ty.fmt(ip), inst.fmtValue(ip) });
+                    err_msg.* = .{ .integer_out_of_range = .{
+                        .dest_ty = dest_ty,
+                        .actual = inst,
+                    } };
                     return .none;
                 }
             },
@@ -1271,8 +1282,10 @@ pub fn coerce(
                 if (inst_ty == Index.empty_struct_type) {
                     const len = ip.indexToKey(dest_ty).array_type.len;
                     if (len != 0) {
-                        // TODO compile error
-                        //std.debug.panic("expected {d} array elements; found 0", .{len});
+                        err_msg.* = .{ .wrong_array_elem_count = .{
+                            .expected = @intCast(len),
+                            .actual = 0,
+                        } };
                         return .none;
                     }
                     // TODO

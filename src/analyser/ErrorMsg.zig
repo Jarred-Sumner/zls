@@ -26,6 +26,16 @@ pub const Data = union(enum) {
     invalid_optional_unwrap: struct {
         operand: Index,
     },
+    /// zig: type '{}' cannot represent integer value '{}'
+    integer_out_of_range: struct {
+        dest_ty: Index,
+        actual: Index,
+    },
+    /// zig: expected {d} array elements; found 0
+    wrong_array_elem_count: struct {
+        expected: u32,
+        actual: u32,
+    },
     /// zig: expected optional type, found '{}'
     expected_optional_type: struct {
         actual: Index,
@@ -84,6 +94,16 @@ pub fn message(
                 .{ payload_ty.fmt(ip), info.operand.fmt(ip) },
             );
         },
+        .integer_out_of_range => |info| std.fmt.allocPrint(
+            allocator,
+            "type '{}' cannot represent integer value '{}'",
+            .{ info.dest_ty.fmt(ip), info.actual.fmt(ip) },
+        ),
+        .wrong_array_elem_count => |info| std.fmt.allocPrint(
+            allocator,
+            "expected {d} array elements; found {d}",
+            .{ info.expected, info.actual },
+        ),
         .expected_optional_type => |info| std.fmt.allocPrint(
             allocator,
             "expected optional type, found '{}'",
