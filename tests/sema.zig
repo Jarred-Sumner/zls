@@ -61,7 +61,6 @@ fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, is_fuzz: bool) !voi
                 if (std.mem.eql(u8, entry.name, "udivmodti4_test.zig")) continue; // exclude very large file
                 if (std.mem.eql(u8, entry.name, "udivmoddi4_test.zig")) continue; // exclude very large file
                 if (std.mem.eql(u8, entry.name, "darwin.zig")) continue; // TODO fix upstream issue with OS_SIGNPOST_ID_INVALID
-                if (std.mem.eql(u8, entry.name, "lock.zig")) continue; // TODO
                 const file = try dir.dir.openFile(entry.name, .{});
                 defer file.close();
                 var file_content = try file.readToEndAlloc(allocator, std.math.maxInt(u32));

@@ -2336,17 +2336,29 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
         }
     }
 
+    const fallback_src_loc: LazySrcLoc = .{
+        .node_abs = sema.mod.declPtr(decl_index).node_idx,
+    };
+
     for (fields, struct_obj.fields.values()) |zir_field, *field| {
         field.ty = ty: {
             if (zir_field.type_ref != .none) {
-                // TODO src_loc
-                break :ty try sema.resolveType(&block_scope, .unneeded, zir_field.type_ref);
+                break :ty try sema.resolveType(&block_scope, fallback_src_loc, zir_field.type_ref); // TODO src_loc
             }
             assert(zir_field.type_body_len != 0);
             const body = zir.extra[extra_index..][0..zir_field.type_body_len];
             extra_index += body.len;
-            break :ty try sema.resolveBody(&block_scope, body);
+            const index = try sema.resolveBody(&block_scope, body);
+            break :ty try sema.coerce(&block_scope, .type_type, index, fallback_src_loc); // TODO src_loc
         };
+
+        if (zir_field.align_body_len > 0) {
+            const body = zir.extra[extra_index..][0..zir_field.align_body_len];
+            extra_index += body.len;
+            const align_ref = try sema.resolveBody(&block_scope, body);
+            const coersed = try sema.coerce(&block_scope, .u16_type, align_ref, fallback_src_loc); // TODO src_loc
+            field.alignment = try sema.mod.ip.toInt(coersed, u16) orelse 0;
+        }
         extra_index += zir_field.init_body_len;
     }
     struct_obj.status = .have_field_types;
