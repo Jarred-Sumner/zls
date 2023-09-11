@@ -15,7 +15,7 @@ const LazySrcLoc = @import("../stage2/Module.zig").LazySrcLoc;
 const offsets = @import("../offsets.zig");
 const types = @import("../lsp.zig");
 const Analyser = @import("../analysis.zig");
-const ErrorMsg = @import("ErrorMsg.zig");
+const ErrorMsg = @import("ErrorMsg.zig").ErrorMsg;
 const InternPool = @import("InternPool.zig");
 const Index = InternPool.Index;
 const Decl = InternPool.Decl;
@@ -760,7 +760,10 @@ pub fn resolveType(sema: *Sema, block: *Block, src: LazySrcLoc, zir_ref: Zir.Ins
     switch (sema.typeOf(index)) {
         .type_type, .unknown_type => return index,
         else => {
-            try sema.fail(block, src, .{ .expected_type_type = .{ .actual = index } });
+            try sema.fail(block, src, .{ .expected_type = .{
+                .expected = .type_type,
+                .actual = index,
+            } });
             return .unknown_type;
         },
     }
@@ -856,16 +859,15 @@ fn analyzeBlockBody(
 //
 //
 
-fn fail(sema: *Sema, block: *Block, src: LazySrcLoc, err: ErrorMsg.Data) Allocator.Error!void {
+fn fail(sema: *Sema, block: *Block, src: LazySrcLoc, error_msg: ErrorMsg) Allocator.Error!void {
     @setCold(true);
     const src_decl = sema.mod.declPtr(block.src_decl);
     const handle = Module.getHandle(src_decl.*, sema.mod);
     const src_loc = src.toSrcLoc(handle, src_decl, sema.mod);
     const src_span = src_loc.span();
     const loc = offsets.Loc{ .start = src_span.start, .end = src_span.end };
-    const error_msg = ErrorMsg{ .loc = loc, .data = err };
 
-    const message = try error_msg.message(sema.mod.document_store.allocator, sema.mod.ip);
+    const message = try std.fmt.allocPrint(sema.mod.document_store.allocator, "{}", .{error_msg.fmt(sema.mod.ip)});
     errdefer sema.mod.document_store.allocator.free(message);
 
     try handle.analysis_errors.append(sema.mod.document_store.allocator, .{
@@ -2138,7 +2140,7 @@ fn coerce(
 ) Allocator.Error!Index {
     assert(sema.mod.ip.isType(dest_ty));
 
-    var err_msg = ErrorMsg.Data{ .expected_type = .{ .expected_type = dest_ty, .actual = inst } };
+    var err_msg = ErrorMsg{ .expected_type = .{ .expected = dest_ty, .actual = inst } };
     const result = try sema.mod.ip.coerce(sema.gpa, sema.arena, dest_ty, inst, builtin.target, &err_msg);
     if (result == .none) {
         try sema.fail(block, inst_src, err_msg);

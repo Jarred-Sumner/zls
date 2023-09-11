@@ -6,16 +6,10 @@ const InternPool = @import("InternPool.zig");
 const Index = InternPool.Index;
 const Key = InternPool.Key;
 
-const ErrorMsg = @This();
-
-pub const Data = union(enum) {
-    /// zig: expected type 'type', found '{}'
-    expected_type_type: struct {
-        actual: Index,
-    },
+pub const ErrorMsg = union(enum) {
     /// zig: expected type '{}', found '{}'
     expected_type: struct {
-        expected_type: Index,
+        expected: Index,
         actual: Index,
     },
     /// zig: comparison of '{}' with null
@@ -59,82 +53,87 @@ pub const Data = union(enum) {
         accessed_ty: Index,
         field_name: []const u8,
     },
-};
 
-loc: offsets.Loc,
-data: Data,
-
-pub fn message(
-    self: ErrorMsg,
-    allocator: std.mem.Allocator,
-    ip: *const InternPool,
-) error{OutOfMemory}![]u8 {
-    return switch (self.data) {
-        .expected_type_type => |info| std.fmt.allocPrint(
-            allocator,
-            "expected type 'type', found '{}'",
-            .{ip.typeOf(info.actual).fmt(ip)},
-        ),
-        .expected_type => |info| std.fmt.allocPrint(
-            allocator,
-            "expected type '{}', found '{}'",
-            .{ info.expected_type.fmt(ip), ip.typeOf(info.actual).fmt(ip) },
-        ),
-        .compare_eq_with_null => |info| std.fmt.allocPrint(
-            allocator,
-            "comparison of '{}' with null",
-            .{info.non_null_type.fmt(ip)},
-        ),
-        .invalid_optional_unwrap => |info| blk: {
-            const operand_ty = ip.typeOf(info.operand);
-            const payload_ty = ip.indexToKey(operand_ty).optional_type.payload_type;
-            break :blk std.fmt.allocPrint(
-                allocator,
-                "tried to unwrap optional of type `{}` which was {}",
-                .{ payload_ty.fmt(ip), info.operand.fmt(ip) },
-            );
-        },
-        .integer_out_of_range => |info| std.fmt.allocPrint(
-            allocator,
-            "type '{}' cannot represent integer value '{}'",
-            .{ info.dest_ty.fmt(ip), info.actual.fmt(ip) },
-        ),
-        .wrong_array_elem_count => |info| std.fmt.allocPrint(
-            allocator,
-            "expected {d} array elements; found {d}",
-            .{ info.expected, info.actual },
-        ),
-        .expected_optional_type => |info| std.fmt.allocPrint(
-            allocator,
-            "expected optional type, found '{}'",
-            .{info.actual.fmt(ip)},
-        ),
-        .expected_error_set_type => |info| std.fmt.allocPrint(
-            allocator,
-            "expected error set type, found '{}'",
-            .{info.actual.fmt(ip)},
-        ),
-        .expected_pointer_type => |info| std.fmt.allocPrint(
-            allocator,
-            "expected pointer, found '{}'",
-            .{info.actual.fmt(ip)},
-        ),
-        .expected_indexable_type => |info| std.fmt.allocPrint(
-            allocator,
-            "type '{}' does not support indexing",
-            .{info.actual.fmt(ip)},
-        ),
-        .unknown_field => |info| if (ip.canHaveFields(info.accessed_ty))
-            std.fmt.allocPrint(
-                allocator,
-                "`{}` has no member '{s}'",
-                .{ info.accessed_ty.fmt(ip), info.field_name },
-            )
-        else
-            std.fmt.allocPrint(
-                allocator,
-                "`{}` does not support field access",
-                .{info.accessed_ty.fmt(ip)},
-            ),
+    const FormatContext = struct {
+        error_msg: ErrorMsg,
+        ip: *const InternPool,
     };
-}
+
+    pub fn fmt(self: ErrorMsg, ip: *const InternPool) std.fmt.Formatter(format) {
+        return .{ .data = .{ .error_msg = self, .ip = ip } };
+    }
+
+    pub fn format(
+        ctx: FormatContext,
+        comptime fmt_str: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) @TypeOf(writer).Error!void {
+        _ = options;
+        const ip = ctx.ip;
+        if (fmt_str.len != 0) std.fmt.invalidFmtError(fmt_str, ctx.error_msg);
+        return switch (ctx.error_msg) {
+            .expected_type => |info| std.fmt.format(
+                writer,
+                "expected type '{}', found '{}'",
+                .{ info.expected.fmt(ip), ip.typeOf(info.actual).fmt(ip) },
+            ),
+            .compare_eq_with_null => |info| std.fmt.format(
+                writer,
+                "comparison of '{}' with null",
+                .{info.non_null_type.fmt(ip)},
+            ),
+            .invalid_optional_unwrap => |info| blk: {
+                const operand_ty = ip.typeOf(info.operand);
+                const payload_ty = ip.indexToKey(operand_ty).optional_type.payload_type;
+                break :blk std.fmt.format(
+                    writer,
+                    "tried to unwrap optional of type `{}` which was {}",
+                    .{ payload_ty.fmt(ip), info.operand.fmt(ip) },
+                );
+            },
+            .integer_out_of_range => |info| std.fmt.format(
+                writer,
+                "type '{}' cannot represent integer value '{}'",
+                .{ info.dest_ty.fmt(ip), info.actual.fmt(ip) },
+            ),
+            .wrong_array_elem_count => |info| std.fmt.format(
+                writer,
+                "expected {d} array elements; found {d}",
+                .{ info.expected, info.actual },
+            ),
+            .expected_optional_type => |info| std.fmt.format(
+                writer,
+                "expected optional type, found '{}'",
+                .{info.actual.fmt(ip)},
+            ),
+            .expected_error_set_type => |info| std.fmt.format(
+                writer,
+                "expected error set type, found '{}'",
+                .{info.actual.fmt(ip)},
+            ),
+            .expected_pointer_type => |info| std.fmt.format(
+                writer,
+                "expected pointer, found '{}'",
+                .{info.actual.fmt(ip)},
+            ),
+            .expected_indexable_type => |info| std.fmt.format(
+                writer,
+                "type '{}' does not support indexing",
+                .{info.actual.fmt(ip)},
+            ),
+            .unknown_field => |info| if (ip.canHaveFields(info.accessed_ty))
+                std.fmt.format(
+                    writer,
+                    "`{}` has no member '{s}'",
+                    .{ info.accessed_ty.fmt(ip), info.field_name },
+                )
+            else
+                std.fmt.format(
+                    writer,
+                    "`{}` does not support field access",
+                    .{info.accessed_ty.fmt(ip)},
+                ),
+        };
+    }
+};

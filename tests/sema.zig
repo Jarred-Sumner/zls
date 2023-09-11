@@ -163,7 +163,6 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
     if (is_fuzz) {
         if (handle.analysis_errors.items.len == 0) return;
         for (handle.analysis_errors.items) |err_msg| {
-            // std.debug.print("loc {s}: {}\n", .{ err_msg.message, err_msg.loc });
             try error_builder.msgAtLoc("unexpected error '{s}'", eb_filename, err_msg.loc, .err, .{err_msg.message});
         }
         return error.UnexpectedErrorMessages; // semantic analysis produced errors on its own codebase which are likely false positives
@@ -180,7 +179,12 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
         if (test_item.expected_error) |expected_error| {
             const actual_error: zls.DocumentStore.ErrorMessage = for (handle.analysis_errors.items) |actual_error| {
                 if (std.meta.eql(actual_error.loc, annotation.loc)) break actual_error;
-            } else return error.ErrorNotFound; // definetly not a confusing error name
+            } else {
+                try error_builder.msgAtLoc("expected error message '{s}'", eb_filename, annotation.loc, .err, .{
+                    expected_error,
+                });
+                return error.ErrorNotFound; // definetly not a confusing error name
+            };
 
             if (!std.mem.eql(u8, expected_error, actual_error.message)) {
                 try error_builder.msgAtLoc("expected error message '{s}' but got '{s}'", eb_filename, annotation.loc, .err, .{

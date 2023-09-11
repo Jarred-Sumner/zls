@@ -21,7 +21,7 @@ const expectFmt = std.testing.expectFmt;
 
 pub const StringPool = @import("StringPool.zig");
 const encoding = @import("encoding.zig");
-const ErrorMsg = @import("ErrorMsg.zig");
+const ErrorMsg = @import("ErrorMsg.zig").ErrorMsg;
 
 pub const Pointer = struct {
     elem_type: Index,
@@ -192,6 +192,7 @@ pub const UndefinedValue = struct {
 };
 
 pub const UnknownValue = struct {
+    /// TODO assert that this is not .type_type because that is a the same as .unknown_type
     ty: Index,
 };
 
@@ -1121,9 +1122,10 @@ pub fn coerce(
     target: std.Target,
     /// TODO make this a return value instead of out pointer
     /// see `CoercionResult`
-    err_msg: *ErrorMsg.Data,
+    err_msg: *ErrorMsg,
 ) Allocator.Error!Index {
     assert(ip.isType(dest_ty));
+    if (dest_ty == .unknown_type) return .unknown_unknown;
     switch (ip.typeOf(dest_ty)) {
         .unknown_type => return .unknown_unknown,
         .type_type => {},
@@ -1133,6 +1135,7 @@ pub fn coerce(
     const inst_ty = ip.typeOf(inst);
     if (inst_ty == dest_ty) return inst;
     if (inst_ty == .undefined_type) return try ip.getUndefined(gpa, dest_ty);
+    if (inst_ty == .unknown_type) return try ip.getUnknown(gpa, dest_ty);
 
     var in_memory_result = try ip.coerceInMemoryAllowed(gpa, arena, dest_ty, inst_ty, false, builtin.target);
     if (in_memory_result == .ok) return try ip.getUnknown(gpa, dest_ty);
@@ -4315,5 +4318,48 @@ fn testResolvePeerTypesInOrder(ip: *InternPool, lhs: Index, rhs: Index, expected
     const actual = try resolvePeerTypes(ip, std.testing.allocator, &.{ lhs, rhs }, builtin.target);
     if (expected == actual) return;
     std.debug.print("expected `{}`, found `{}`\n", .{ expected.fmtDebug(ip), actual.fmtDebug(ip) });
+    return error.TestExpectedEqual;
+}
+
+test "coerce int" {
+    const gpa = std.testing.allocator;
+
+    var ip = try InternPool.init(gpa);
+    defer ip.deinit(gpa);
+
+    const @"as(comptime_int, 1)" = try ip.get(gpa, .{ .int_u64_value = .{ .ty = .comptime_int_type, .int = 1 } });
+    const @"as(u1, 1)" = try ip.get(gpa, .{ .int_u64_value = .{ .ty = .u1_type, .int = 1 } });
+    const @"as(comptime_int, -1)" = try ip.get(gpa, .{ .int_i64_value = .{ .ty = .comptime_int_type, .int = -1 } });
+    const @"as(i64, 32000)" = try ip.get(gpa, .{ .int_i64_value = .{ .ty = .i64_type, .int = 32000 } });
+
+    try ip.testCoerce(.u1_type, @"as(comptime_int, 1)", @"as(u1, 1)");
+    try ip.testCoerce(.u1_type, @"as(comptime_int, -1)", .none);
+    try ip.testCoerce(.i8_type, @"as(i64, 32000)", .none);
+}
+
+fn testCoerce(ip: *InternPool, dest_ty: Index, inst: Index, expected: Index) !void {
+    const gpa = std.testing.allocator;
+    var arena_allocator = std.heap.ArenaAllocator.init(gpa);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+
+    var err_msg: ErrorMsg = undefined;
+    const actual = try ip.coerce(gpa, arena, dest_ty, inst, builtin.target, &err_msg);
+    if (expected == actual) return;
+
+    std.debug.print(
+        \\expression: @as({}, {})
+        \\expected:   {}
+    , .{
+        dest_ty.fmtDebug(ip),
+        inst.fmtDebug(ip),
+        expected.fmtDebug(ip),
+    });
+    if (actual == .none) {
+        std.debug.print("got error:  '{}'", .{err_msg.fmt(ip)});
+    } else {
+        std.debug.print("actual:     '{}'", .{actual.fmtDebug(ip)});
+    }
+
     return error.TestExpectedEqual;
 }
