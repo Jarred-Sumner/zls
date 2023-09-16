@@ -15,6 +15,7 @@ const tracy = @import("tracy.zig");
 const diff = @import("diff.zig");
 const ComptimeInterpreter = @import("ComptimeInterpreter.zig");
 const InternPool = @import("analyser/analyser.zig").InternPool;
+const Module = @import("analyser/analyser.zig").Module;
 const ZigVersionWrapper = @import("ZigVersionWrapper.zig");
 const Transport = @import("Transport.zig");
 const known_folders = @import("known-folders");
@@ -50,6 +51,8 @@ wait_group: if (zig_builtin.single_threaded) void else std.Thread.WaitGroup,
 job_queue: std.fifo.LinearFifo(Job, .Dynamic),
 job_queue_lock: std.Thread.Mutex = .{},
 ip: InternPool = .{},
+/// set if config.analysis_backend == .astgen_analyser
+mod: ?Module = null,
 zig_exe_lock: std.Thread.Mutex = .{},
 config_arena: std.heap.ArenaAllocator.State = .{},
 client_capabilities: ClientCapabilities = .{},
@@ -865,6 +868,15 @@ pub fn updateConfiguration(server: *Server, new_config: configuration.Configurat
     if (new_zig_exe_path or new_zig_lib_path) {
         server.document_store.cimports.clearAndFree(server.document_store.allocator);
     }
+    
+    if (server.config.analysis_backend == .astgen_analyser) {
+        server.mod = Module.init(server.allocator, &server.ip, &server.document_store);
+        server.document_store.mod = &server.mod.?;
+    } else if (server.mod) |*mod| {
+        mod.deinit();
+        server.mod = null;
+        server.document_store.mod = null;
+    }
 
     if (server.status == .initialized) {
         const json_message = try server.sendToClientRequest(
@@ -874,6 +886,7 @@ pub fn updateConfiguration(server: *Server, new_config: configuration.Configurat
         );
         server.allocator.free(json_message);
     }
+
 
     // <---------------------------------------------------------->
     //  don't modify config options after here, only show messages
@@ -1888,6 +1901,7 @@ pub fn destroy(server: *Server) void {
     while (server.job_queue.readItem()) |job| job.deinit(server.allocator);
     server.job_queue.deinit();
     server.document_store.deinit();
+    if (server.mod) |*mod| mod.deinit();
     server.ip.deinit(server.allocator);
     server.client_capabilities.deinit(server.allocator);
     if (server.runtime_zig_version) |zig_version| zig_version.free();
