@@ -16,7 +16,30 @@ pub const String = enum(u32) {
     pub fn toOptional(self: String) OptionalString {
         return @enumFromInt(@intFromEnum(self));
     }
+
+    pub fn fmt(self: String, pool: *const StringPool) std.fmt.Formatter(format) {
+        return .{ .data = .{ .string = self, .pool = pool } };
+    }
+
+    pub fn fmtId(self: String, pool: *const StringPool) std.fmt.Formatter(formatId) {
+        return .{ .data = .{ .string = self, .pool = pool } };
+    }
 };
+
+const FormatContext = struct {
+    string: String,
+    pool: *const StringPool,
+};
+
+fn format(ctx: FormatContext, comptime fmt_str: []const u8, _: std.fmt.FormatOptions, writer: anytype) @TypeOf(writer).Error!void {
+    if (fmt_str.len != 0) std.fmt.invalidFmtError(fmt_str, ctx.string);
+    try writer.writeAll(ctx.pool.stringToSlice(ctx.string));
+}
+
+fn formatId(ctx: FormatContext, comptime fmt_str: []const u8, _: std.fmt.FormatOptions, writer: anytype) @TypeOf(writer).Error!void {
+    if (fmt_str.len != 0) std.fmt.invalidFmtError(fmt_str, ctx.string);
+    try writer.print("{}", .{std.zig.fmtId(ctx.pool.stringToSlice(ctx.string))});
+}
 
 pub const OptionalString = enum(u32) {
     empty = 0,

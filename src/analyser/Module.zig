@@ -283,16 +283,17 @@ pub fn semaDecl(mod: *Module, decl_index: DeclIndex) Allocator.Error!void {
     };
     defer sema.deinit();
 
-    const decl_name = sema.mod.ip.string_pool.stringToSlice(decl.name);
+    const string_pool = &sema.mod.ip.string_pool;
+
     if (mod.declIsRoot(decl_index)) {
-        log.debug("semaDecl root {d} ({s})", .{ @intFromEnum(decl_index), decl_name });
+        log.debug("semaDecl root {d} ({})", .{ @intFromEnum(decl_index), decl.name.fmt(string_pool) });
         const struct_ty = mod.ip.indexToKey(decl.index).struct_type;
         const struct_obj = mod.ip.getStructMut(struct_ty);
         try sema.analyzeStructDecl(decl, struct_obj.zir_index, struct_obj);
         decl.analysis = .complete;
         return;
     }
-    log.debug("semaDecl {d} ({s})", .{ @intFromEnum(decl_index), decl_name });
+    log.debug("semaDecl {d} ({})", .{ @intFromEnum(decl_index), decl.name.fmt(string_pool) });
 
     var block_scope: Sema.Block = .{
         .parent = null,

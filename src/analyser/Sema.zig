@@ -2068,9 +2068,8 @@ fn resolveAnonymousDeclTypeName(
             // semantically analyzed.
             // This name is also used as the key in the parent namespace so it cannot be
             // renamed.
-            const src_decl_name = sema.mod.ip.string_pool.stringToSlice(src_decl.name);
-            const name = try std.fmt.allocPrint(sema.arena, "{s}__{s}_{d}", .{
-                src_decl_name, anon_prefix, @intFromEnum(new_decl_index),
+            const name = try std.fmt.allocPrint(sema.arena, "{}__{s}_{d}", .{
+                src_decl.name.fmt(&sema.mod.ip.string_pool), anon_prefix, @intFromEnum(new_decl_index),
             });
             return try sema.mod.ip.string_pool.getOrPutString(sema.mod.gpa, name);
         },
@@ -2114,9 +2113,8 @@ fn resolveAnonymousDeclTypeName(
                 .dbg_var_ptr, .dbg_var_val => {
                     if (zir_data[i].str_op.operand != ref) continue;
 
-                    const src_decl_name = sema.mod.ip.string_pool.stringToSlice(src_decl.name);
-                    const name = try std.fmt.allocPrint(sema.arena, "{s}.{s}", .{
-                        src_decl_name, zir_data[i].str_op.getStr(sema.code),
+                    const name = try std.fmt.allocPrint(sema.arena, "{}.{s}", .{
+                        src_decl.name.fmt(&sema.mod.ip.string_pool), zir_data[i].str_op.getStr(sema.code),
                     });
                     return try sema.mod.ip.string_pool.getOrPutString(sema.mod.gpa, name);
                 },

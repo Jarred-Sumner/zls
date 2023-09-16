@@ -3304,8 +3304,7 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
             const optional_decl_index = ip.getStruct(struct_index).owner_decl;
             const decl_index = optional_decl_index.unwrap() orelse return panicOrElse("TODO", null);
             const decl = ip.getDecl(decl_index);
-            const decl_name = ip.string_pool.stringToSlice(decl.name);
-            try writer.writeAll(decl_name);
+            try writer.print("{}", .{decl.name.fmtId(&ip.string_pool)});
         },
         .optional_type => |optional_info| {
             try writer.writeByte('?');
@@ -3321,15 +3320,14 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
         .error_set_type => |error_set_info| {
             if (error_set_info.owner_decl.unwrap()) |decl_index| {
                 const decl = ip.getDecl(decl_index);
-                const decl_name = ip.string_pool.stringToSlice(decl.name);
-                try writer.writeAll(decl_name);
+                try writer.print("{}", .{decl.name.fmtId(&ip.string_pool)});
                 return null;
             }
             const names = error_set_info.names;
             try writer.writeAll("error{");
             for (names, 0..) |name, i| {
                 if (i != 0) try writer.writeByte(',');
-                try writer.print("{}", .{std.zig.fmtId(ip.string_pool.stringToSlice(name))});
+                try writer.print("{}", .{name.fmtId(&ip.string_pool)});
             }
             try writer.writeByte('}');
         },
@@ -3432,12 +3430,11 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
             const struct_info = ip.getStruct(ip.indexToKey(aggregate.ty).struct_type);
 
             try writer.writeAll(".{");
-            for (struct_info.fields.keys(), aggregate.values, 0..) |field_name_index, field, i| {
+            for (struct_info.fields.keys(), aggregate.values, 0..) |field_name, field, i| {
                 if (i != 0) try writer.writeAll(", ");
-                const field_name = ip.string_pool.stringToSlice(field_name_index);
 
                 try writer.print(".{} = {}", .{
-                    std.zig.fmtId(field_name),
+                    field_name.fmtId(&ip.string_pool),
                     field.fmtOptions(ip, options),
                 });
             }
@@ -3445,18 +3442,14 @@ fn printInternal(ip: *const InternPool, ty: Index, writer: anytype, options: For
         },
         .union_value => |union_value| {
             const union_info = ip.getUnion(ip.indexToKey(union_value.ty).union_type);
-            const name_index = union_info.fields.keys()[union_value.field_index];
-            const name = ip.string_pool.stringToSlice(name_index);
+            const name = union_info.fields.keys()[union_value.field_index];
 
             try writer.print(".{{ .{} = {} }}", .{
-                std.zig.fmtId(name),
+                name.fmtId(&ip.string_pool),
                 union_value.val.fmtOptions(ip, options),
             });
         },
-        .error_value => |error_value| {
-            const name = ip.string_pool.stringToSlice(error_value.error_tag_name);
-            try writer.print("error.{}", .{std.zig.fmtId(name)});
-        },
+        .error_value => |error_value| try writer.print("error.{}", .{error_value.error_tag_name.fmtId(&ip.string_pool)}),
         .null_value => try writer.print("null", .{}),
         .undefined_value => try writer.print("undefined", .{}),
         .unknown_value => try writer.print("(unknown value)", .{}),

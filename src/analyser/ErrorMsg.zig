@@ -128,8 +128,8 @@ pub const ErrorMsg = union(enum) {
             ),
             .duplicate_struct_field => |info| std.fmt.format(
                 writer,
-                "duplicate struct field: '{s}'",
-                .{ip.string_pool.stringToSlice(info.name)},
+                "duplicate struct field: '{}'",
+                .{info.name.fmt(&ip.string_pool)},
             ),
             .unknown_field => |info| if (ip.canHaveFields(info.accessed_ty))
                 std.fmt.format(
