@@ -192,7 +192,7 @@ pub const UndefinedValue = struct {
 };
 
 pub const UnknownValue = struct {
-    /// TODO assert that this is not .type_type because that is a the same as .unknown_type
+    /// asserts that this is not .type_type because that is a the same as .unknown_type
     ty: Index,
 };
 
@@ -891,7 +891,10 @@ pub fn get(ip: *InternPool, gpa: Allocator, key: Key) Allocator.Error!Index {
         .float_32_value => |float_val| @as(u32, @bitCast(float_val)),
         .null_value => |null_val| @intFromEnum(null_val.ty),
         .undefined_value => |undefined_val| @intFromEnum(undefined_val.ty),
-        .unknown_value => |unknown_val| @intFromEnum(unknown_val.ty),
+        .unknown_value => |unknown_val| blk: {
+            std.debug.assert(unknown_val.ty != .type_type); // .unknown_type instead
+            break :blk @intFromEnum(unknown_val.ty);
+        },
         inline else => |data| try ip.addExtra(gpa, data),
     };
 
@@ -1333,14 +1336,14 @@ fn coerceInt(
     dest_ty: Index,
     val: Index,
 ) Allocator.Error!Index {
-    return try ip.get(gpa, switch (ip.indexToKey(val)) {
-        .undefined_value => return try ip.getUndefined(gpa, dest_ty),
-        .unknown_value => return try ip.getUnknown(gpa, dest_ty),
-        .int_i64_value => |int| .{ .int_i64_value = .{ .int = int.int, .ty = dest_ty } },
-        .int_u64_value => |int| .{ .int_u64_value = .{ .int = int.int, .ty = dest_ty } },
-        .int_big_value => |int| .{ .int_big_value = .{ .int = int.int, .ty = dest_ty } },
+    switch (ip.indexToKey(val)) {
+        .int_i64_value => |int| return try ip.get(gpa, .{ .int_i64_value = .{ .int = int.int, .ty = dest_ty } }),
+        .int_u64_value => |int| return try ip.get(gpa, .{ .int_u64_value = .{ .int = int.int, .ty = dest_ty } }),
+        .int_big_value => |int| return try ip.get(gpa, .{ .int_big_value = .{ .int = int.int, .ty = dest_ty } }),
+        .undefined_value => |info| return try ip.getUndefined(gpa, info.ty),
+        .unknown_value => |info| return try ip.getUnknown(gpa, info.ty),
         else => unreachable,
-    });
+    }
 }
 
 pub fn resolvePeerTypes(ip: *InternPool, gpa: Allocator, types: []const Index, target: std.Target) Allocator.Error!Index {
@@ -1939,7 +1942,7 @@ fn coerceInMemoryAllowed(
     target: std.Target,
 ) Allocator.Error!InMemoryCoercionResult {
     if (dest_ty == src_ty) return .ok;
-    if (dest_ty == .unknown_type or src_ty == .unknown_type) return .ok;
+    if (ip.isUnknown(dest_ty) or ip.isUnknown(src_ty)) return .ok;
 
     assert(ip.isType(dest_ty));
     assert(ip.isType(src_ty));
@@ -2512,7 +2515,6 @@ pub fn typeOf(ip: *const InternPool, index: Index) Index {
 
 pub fn isType(ip: *const InternPool, ty: Index) bool {
     return switch (ip.items.items(.tag)[@intFromEnum(ty)]) {
-        .simple_value,
         .simple_type,
         .type_int_signed,
         .type_int_unsigned,
@@ -2530,6 +2532,7 @@ pub fn isType(ip: *const InternPool, ty: Index) bool {
         .type_anyframe,
         => true,
 
+        .simple_value,
         .float_f16,
         .float_f32,
         .float_f64,
@@ -3158,6 +3161,7 @@ pub fn getUndefined(ip: *InternPool, gpa: Allocator, ty: Index) Allocator.Error!
 pub fn getUnknown(ip: *InternPool, gpa: Allocator, ty: Index) Allocator.Error!Index {
     assert(ip.isType(ty));
     if (ty == .type_type) return Index.unknown_type;
+    if (ty == .unknown_type) return Index.unknown_unknown;
     return try ip.get(gpa, .{ .unknown_value = .{ .ty = ty } });
 }
 
