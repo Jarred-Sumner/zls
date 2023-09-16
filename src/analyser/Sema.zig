@@ -2315,13 +2315,20 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
             }
             extra_index += 1;
 
+            const field_name_src = LazySrcLoc{ .container_field = .{ .decl = decl_index, .index = @intCast(field_i), .query = .name } };
+
             const field_name = try sema.mod.ip.string_pool.getOrPutString(sema.mod.gpa, if (field_name_zir) |s|
                 s
             else
                 try std.fmt.allocPrint(sema.arena, "{d}", .{field_i}));
 
             const gop = struct_obj.fields.getOrPutAssumeCapacity(field_name);
-            if (gop.found_existing) continue;
+            if (gop.found_existing) {
+                try sema.fail(&block_scope, field_name_src, .{ .duplicate_struct_field = .{
+                    .name = field_name,
+                } });
+                continue;
+            }
 
             gop.value_ptr.* = .{
                 .ty = .noreturn_type,
@@ -2341,27 +2348,29 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
         }
     }
 
-    const fallback_src_loc: LazySrcLoc = .{
-        .node_abs = sema.mod.declPtr(decl_index).node_idx,
-    };
+    // may not match fields_len because of duplicate fields
+    const field_count = struct_obj.fields.count();
 
-    for (fields, struct_obj.fields.values()) |zir_field, *field| {
+    for (fields[0..field_count], struct_obj.fields.values(), 0..) |zir_field, *field, field_i| {
+        const field_type_src = LazySrcLoc{ .container_field = .{ .decl = decl_index, .index = @intCast(field_i), .query = .type } };
+        const field_align_src = LazySrcLoc{ .container_field = .{ .decl = decl_index, .index = @intCast(field_i), .query = .alignment } };
+
         field.ty = ty: {
             if (zir_field.type_ref != .none) {
-                break :ty try sema.resolveType(&block_scope, fallback_src_loc, zir_field.type_ref); // TODO src_loc
+                break :ty try sema.resolveType(&block_scope, field_type_src, zir_field.type_ref);
             }
             assert(zir_field.type_body_len != 0);
             const body = zir.extra[extra_index..][0..zir_field.type_body_len];
             extra_index += body.len;
             const index = try sema.resolveBody(&block_scope, body);
-            break :ty try sema.coerce(&block_scope, .type_type, index, fallback_src_loc); // TODO src_loc
+            break :ty try sema.coerce(&block_scope, .type_type, index, field_type_src);
         };
 
         if (zir_field.align_body_len > 0) {
             const body = zir.extra[extra_index..][0..zir_field.align_body_len];
             extra_index += body.len;
             const align_ref = try sema.resolveBody(&block_scope, body);
-            const coersed = try sema.coerce(&block_scope, .u16_type, align_ref, fallback_src_loc); // TODO src_loc
+            const coersed = try sema.coerce(&block_scope, .u16_type, align_ref, field_align_src);
             field.alignment = try sema.mod.ip.toInt(coersed, u16) orelse 0;
         }
         extra_index += zir_field.init_body_len;

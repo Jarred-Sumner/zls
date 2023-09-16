@@ -47,6 +47,10 @@ pub const ErrorMsg = union(enum) {
     expected_indexable_type: struct {
         actual: Index,
     },
+    /// zig: duplicate struct field: '{}'
+    duplicate_struct_field: struct {
+        name: InternPool.StringPool.String,
+    },
     /// zig: `{}` has no member '{s}'
     /// zig: `{}` does not support field access
     unknown_field: struct {
@@ -121,6 +125,11 @@ pub const ErrorMsg = union(enum) {
                 writer,
                 "type '{}' does not support indexing",
                 .{info.actual.fmt(ip)},
+            ),
+            .duplicate_struct_field => |info| std.fmt.format(
+                writer,
+                "duplicate struct field: '{s}'",
+                .{ip.string_pool.stringToSlice(info.name)},
             ),
             .unknown_field => |info| if (ip.canHaveFields(info.accessed_ty))
                 std.fmt.format(

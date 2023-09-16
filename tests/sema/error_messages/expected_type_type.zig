@@ -13,3 +13,12 @@ const e = anyframe->true;
 
 const f = ?2;
 //         ^ error: expected type 'type', found 'comptime_int'
+
+const G = struct {
+    alpha: 52,
+    //     ^^ error: expected type 'type', found 'comptime_int'
+};
+
+comptime {
+    _ = @as(G, undefined).alpha; // force field resolution of G
+}
