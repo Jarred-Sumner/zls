@@ -54,7 +54,7 @@ pub const ErrorMsg = union(enum) {
     /// zig: `{}` has no member '{s}'
     /// zig: `{}` does not support field access
     unknown_field: struct {
-        accessed_ty: Index,
+        accessed: Index,
         field_name: []const u8,
     },
 
@@ -131,17 +131,17 @@ pub const ErrorMsg = union(enum) {
                 "duplicate struct field: '{}'",
                 .{info.name.fmt(&ip.string_pool)},
             ),
-            .unknown_field => |info| if (ip.canHaveFields(info.accessed_ty))
+            .unknown_field => |info| if (ip.canHaveFields(ip.typeOf(info.accessed)))
                 std.fmt.format(
                     writer,
                     "`{}` has no member '{s}'",
-                    .{ info.accessed_ty.fmt(ip), info.field_name },
+                    .{ info.accessed.fmt(ip), info.field_name },
                 )
             else
                 std.fmt.format(
                     writer,
                     "`{}` does not support field access",
-                    .{info.accessed_ty.fmt(ip)},
+                    .{info.accessed.fmt(ip)},
                 ),
         };
     }
