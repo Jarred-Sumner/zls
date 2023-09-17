@@ -2044,7 +2044,7 @@ fn zirStructDecl(
     decl.analysis = .complete;
     decl.src_line = src_decl.src_line;
 
-    try sema.analyzeStructDecl(decl, inst, struct_obj);
+    try sema.analyzeStructDecl(decl, struct_obj);
 
     return struct_ty;
 }
@@ -2166,10 +2166,9 @@ fn ensureDeclAnalyzed(sema: *Sema, decl_index: DeclIndex) Allocator.Error!void {
 pub fn analyzeStructDecl(
     sema: *Sema,
     new_decl: *Decl,
-    inst: Zir.Inst.Index,
     struct_obj: *InternPool.Struct,
 ) Allocator.Error!void {
-    const extended: Zir.Inst.Extended.InstData = sema.code.instructions.items(.data)[inst].extended;
+    const extended: Zir.Inst.Extended.InstData = sema.code.instructions.items(.data)[struct_obj.zir_index].extended;
     assert(extended.opcode == .struct_decl);
     const small = @as(Zir.Inst.StructDecl.Small, @bitCast(extended.small));
 

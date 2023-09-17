@@ -258,7 +258,7 @@ pub fn semaFile(mod: *Module, handle: *Handle) Allocator.Error!void {
     };
     defer sema.deinit();
 
-    try sema.analyzeStructDecl(decl, Zir.main_struct_inst, struct_obj);
+    try sema.analyzeStructDecl(decl, struct_obj);
     decl.analysis = .complete;
 }
 
@@ -289,7 +289,7 @@ pub fn semaDecl(mod: *Module, decl_index: DeclIndex) Allocator.Error!void {
         log.debug("semaDecl root {d} ({})", .{ @intFromEnum(decl_index), decl.name.fmt(string_pool) });
         const struct_ty = mod.ip.indexToKey(decl.index).struct_type;
         const struct_obj = mod.ip.getStructMut(struct_ty);
-        try sema.analyzeStructDecl(decl, struct_obj.zir_index, struct_obj);
+        try sema.analyzeStructDecl(decl, struct_obj);
         decl.analysis = .complete;
         return;
     }
