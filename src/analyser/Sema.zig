@@ -2041,7 +2041,6 @@ fn zirStructDecl(
     decl.name = try sema.resolveAnonymousDeclTypeName(block, decl_index, small.name_strategy, "struct", inst);
     decl.index = struct_ty;
     decl.alignment = 0;
-    decl.analysis = .complete;
     decl.src_line = src_decl.src_line;
 
     try sema.analyzeStructDecl(decl, struct_obj);
@@ -2508,6 +2507,7 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
     if (!gop.found_existing) {
         const new_decl_index = try mod.allocateNewDecl(namespace_index, decl_node);
         const new_decl = mod.declPtr(new_decl_index);
+        new_decl.kind = kind;
         new_decl.name = decl_name_string_index;
         if (kind == .@"usingnamespace") {
             namespace.usingnamespace_set.putAssumeCapacity(new_decl_index, is_pub);
@@ -2522,6 +2522,7 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
         new_decl.zir_decl_index = @as(u32, @intCast(decl_sub_index));
 
         try sema.ensureDeclAnalyzed(new_decl_index);
+        return;
     }
 
     const decl_index = gop.key_ptr.*;

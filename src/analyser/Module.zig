@@ -212,7 +212,8 @@ pub fn get(mod: *Module, key: InternPool.Key) Allocator.Error!InternPool.Index {
 pub fn semaFile(mod: *Module, handle: *Handle) Allocator.Error!void {
     // TODO also support .outdated which may required require storing the old Ast as well
     assert(handle.zir_status == .done);
-    assert(handle.root_decl == .none);
+
+    if (handle.root_decl != .none) return;
 
     const struct_index = try mod.ip.createStruct(mod.gpa, .{
         .fields = .{},
