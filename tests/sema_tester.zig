@@ -13,87 +13,55 @@ const Key = InternPool.Key;
 const Analyser = zls.Analyser;
 const offsets = zls.offsets;
 
-const allocator: std.mem.Allocator = std.testing.allocator;
+pub const std_options = struct {
+    pub const log_level = .warn;
+};
 
-test "semantic analysis" {
-    const current_file_dir = comptime std.fs.path.dirname(@src().file).?;
-    const path = try std.fs.path.join(allocator, &.{ current_file_dir, "sema" });
-    defer allocator.free(path);
+pub fn main() !void {
+    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = general_purpose_allocator.deinit();
+    const gpa = general_purpose_allocator.allocator();
 
-    var dir = try std.fs.cwd().openIterableDir(path, .{});
-    defer dir.close();
+    const stderr = std.io.getStdErr().writer();
 
-    try testSemanticAnalysisRecursiveDir(dir, false);
-}
+    var arg_it = try std.process.argsWithAllocator(gpa);
+    defer arg_it.deinit();
 
-test "semantic analysis - fuzz on ZLS codebase" {
-    const current_file_path = comptime std.fs.path.dirname(@src().file).?;
-    const path = try std.fs.path.resolve(allocator, &.{ current_file_path, "..", "src" });
-    defer allocator.free(path);
+    _ = arg_it.skip();
 
-    var dir = try std.fs.cwd().openIterableDir(path, .{});
-    defer dir.close();
+    const file_path = arg_it.next().?;
+    var is_fuzz = false;
 
-    try testSemanticAnalysisRecursiveDir(dir, true);
-}
-
-test "semantic analysis - fuzz on zig standard library codebase" {
-    const zig_exe_path = (try zls.configuration.findZig(allocator)) orelse return error.SkipZigTest;
-    defer allocator.free(zig_exe_path);
-
-    const zig_env = zls.configuration.getZigEnv(allocator, zig_exe_path) orelse return error.SkipZigTest;
-    defer zig_env.deinit();
-
-    const zig_lib_path = zig_env.value.lib_dir orelse return error.SkipZigTest;
-
-    var dir = try std.fs.openIterableDirAbsolute(zig_lib_path, .{});
-    defer dir.close();
-
-    try testSemanticAnalysisRecursiveDir(dir, true);
-}
-
-fn testSemanticAnalysisRecursiveDir(dir: std.fs.IterableDir, is_fuzz: bool) !void {
-    var iter = dir.iterateAssumeFirstIteration();
-    while (try iter.next()) |entry| {
-        switch (entry.kind) {
-            .file => {
-                if (!std.mem.eql(u8, std.fs.path.extension(entry.name), ".zig")) continue;
-                if (std.mem.eql(u8, entry.name, "udivmodti4_test.zig")) continue; // exclude very large file
-                if (std.mem.eql(u8, entry.name, "udivmoddi4_test.zig")) continue; // exclude very large file
-                if (std.mem.eql(u8, entry.name, "darwin.zig")) continue; // TODO fix upstream issue with OS_SIGNPOST_ID_INVALID
-                const file = try dir.dir.openFile(entry.name, .{});
-                defer file.close();
-                var file_content = try file.readToEndAlloc(allocator, std.math.maxInt(u32));
-                defer allocator.free(file_content);
-
-                var out_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-                const file_path = if (comptime std.os.isGetFdPathSupportedOnTarget(builtin.os)) try std.os.getFdPath(file.handle, &out_buffer) else null;
-
-                // std.debug.print("file: {s}\n", .{try dir.dir.realpath(entry.name, &out_buffer)});
-
-                try testSemanticAnalysis(file_content, file_path, is_fuzz);
-            },
-            .directory => {
-                var sub_dir = try dir.dir.openIterableDir(entry.name, .{});
-                defer sub_dir.close();
-                try testSemanticAnalysisRecursiveDir(sub_dir, is_fuzz);
-            },
-            else => {},
+    while (arg_it.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--fuzz")) {
+            is_fuzz = true;
+        } else {
+            try stderr.print("Unrecognized argument '{s}'.\n", .{arg});
+            std.process.exit(1);
         }
     }
-}
 
-fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: bool) !void {
+    // std.debug.print("file_path: {s}\n", .{file_path});
+
+    const file = try std.fs.openFileAbsolute(file_path, .{});
+    defer file.close();
+
+    const source = try file.readToEndAlloc(gpa, std.math.maxInt(usize));
+    defer gpa.free(source);
+
+    const uri = try zls.URI.fromPath(gpa, file_path);
+    defer gpa.free(uri);
+
     // a InternPool stores types and values
-    var ip = try InternPool.init(allocator);
-    defer ip.deinit(allocator);
+    var ip = try InternPool.init(gpa);
+    defer ip.deinit(gpa);
 
-    // create a Module that stores data which is used across multiple files like declarations
-    var mod = Module.init(allocator, &ip, undefined);
+    // create a Module that stores data which is used across multiple files like namespaces
+    var mod = Module.init(gpa, &ip, undefined);
     defer mod.deinit();
 
     var document_store = zls.DocumentStore{
-        .allocator = allocator,
+        .allocator = gpa,
         .config = &zls.Config{
             .analysis_backend = .astgen_analyser,
             .enable_ast_check_diagnostics = true,
@@ -102,20 +70,15 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
         .runtime_zig_version = &@as(?zls.ZigVersionWrapper, null),
         .mod = &mod,
     };
+
     defer document_store.deinit();
     std.debug.assert(document_store.wantZir());
-
-    const test_uri: []const u8 = switch (builtin.os.tag) {
-        .windows => "file:///C:\\test.zig",
-        else => "file:///test.zig",
-    };
 
     mod.document_store = &document_store;
 
     // add the given source file to the document store
-    // this will also analyse all declarations in the top-level/root scope
-    _ = try document_store.openDocument(test_uri, source);
-    const handle = document_store.handles.get(test_uri).?;
+    try document_store.openDocument(uri, source);
+    const handle = document_store.handles.get(uri).?;
     std.debug.assert(handle.zir_status == .done);
     std.debug.assert(handle.tree.errors.len == 0);
     std.debug.assert(!handle.zir.hasCompileErrors());
@@ -143,7 +106,7 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
     // `Sema` stores temporary information that is required during semantic analysis
     var sema = Sema{
         .mod = &mod,
-        .gpa = allocator,
+        .gpa = gpa,
         .arena = arena.allocator(),
         .code = handle.zir,
     };
@@ -152,42 +115,46 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
     // this will resolve the types of all top-level container fields
     // try sema.resolveTypeFieldsStruct(struct_obj);
 
-    var error_builder = ErrorBuilder.init(allocator);
+    var error_builder = ErrorBuilder.init(gpa);
     defer error_builder.deinit();
     errdefer error_builder.writeDebug();
     error_builder.file_name_visibility = .always;
 
-    const eb_filename = file_path orelse test_uri;
-    try error_builder.addFile(eb_filename, source);
+    try error_builder.addFile(file_path, handle.tree.source);
 
     if (is_fuzz) {
         if (handle.analysis_errors.items.len == 0) return;
         for (handle.analysis_errors.items) |err_msg| {
-            try error_builder.msgAtLoc("unexpected error '{s}'", eb_filename, err_msg.loc, .err, .{err_msg.message});
+            try error_builder.msgAtLoc("unexpected error '{s}'", file_path, err_msg.loc, .err, .{err_msg.message});
         }
         return error.UnexpectedErrorMessages; // semantic analysis produced errors on its own codebase which are likely false positives
     }
 
-    const annotations = try helper.collectAnnotatedSourceLocations(allocator, source);
-    defer allocator.free(annotations);
+    const annotations = try helper.collectAnnotatedSourceLocations(gpa, handle.tree.source);
+    defer gpa.free(annotations);
 
     for (annotations) |annotation| {
         const identifier_loc = annotation.loc;
-        const identifier = offsets.locToSlice(source, identifier_loc);
-        const test_item = try parseAnnotatedSourceLoc(annotation);
+        const identifier = offsets.locToSlice(handle.tree.source, identifier_loc);
+        const test_item = parseAnnotatedSourceLoc(annotation) catch |err| {
+            try error_builder.msgAtLoc("invalid annotated source location '{s}'", file_path, annotation.loc, .err, .{
+                annotation.content,
+            });
+            return err;
+        };
 
         if (test_item.expected_error) |expected_error| {
             const actual_error: zls.DocumentStore.ErrorMessage = for (handle.analysis_errors.items) |actual_error| {
                 if (std.meta.eql(actual_error.loc, annotation.loc)) break actual_error;
             } else {
-                try error_builder.msgAtLoc("expected error message '{s}'", eb_filename, annotation.loc, .err, .{
+                try error_builder.msgAtLoc("expected error message '{s}'", file_path, annotation.loc, .err, .{
                     expected_error,
                 });
                 return error.ErrorNotFound; // definetly not a confusing error name
             };
 
             if (!std.mem.eql(u8, expected_error, actual_error.message)) {
-                try error_builder.msgAtLoc("expected error message '{s}' but got '{s}'", eb_filename, annotation.loc, .err, .{
+                try error_builder.msgAtLoc("expected error message '{s}' but got '{s}'", file_path, annotation.loc, .err, .{
                     expected_error,
                     actual_error.message,
                 });
@@ -198,17 +165,17 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
         }
 
         const found_decl_index = lookupDeclIndex(&mod, handle.*, identifier_loc) orelse {
-            try error_builder.msgAtLoc("couldn't find identifier `{s}` here", eb_filename, identifier_loc, .err, .{identifier});
+            try error_builder.msgAtLoc("couldn't find identifier `{s}` here", file_path, identifier_loc, .err, .{identifier});
             return error.IdentifierNotFound;
         };
 
         if (test_item.expected_type) |expected_type| {
             const val: InternPool.Index = found_decl_index;
             const ty: InternPool.Index = if (val == .none) .none else mod.ip.typeOf(val);
-            const actual_type = try std.fmt.allocPrint(allocator, "{}", .{ty.fmtDebug(mod.ip)});
-            defer allocator.free(actual_type);
+            const actual_type = try std.fmt.allocPrint(gpa, "{}", .{ty.fmtDebug(mod.ip)});
+            defer gpa.free(actual_type);
             if (!std.mem.eql(u8, expected_type, actual_type)) {
-                try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", eb_filename, identifier_loc, .err, .{
+                try error_builder.msgAtLoc("expected type `{s}` but got `{s}`", file_path, identifier_loc, .err, .{
                     expected_type,
                     actual_type,
                 });
@@ -218,10 +185,10 @@ fn testSemanticAnalysis(source: []const u8, file_path: ?[]const u8, is_fuzz: boo
 
         if (test_item.expected_value) |expected_value| {
             const val: InternPool.Index = found_decl_index;
-            const actual_value = try std.fmt.allocPrint(allocator, "{}", .{val.fmt(mod.ip)});
-            defer allocator.free(actual_value);
+            const actual_value = try std.fmt.allocPrint(gpa, "{}", .{val.fmt(mod.ip)});
+            defer gpa.free(actual_value);
             if (!std.mem.eql(u8, expected_value, actual_value)) {
-                try error_builder.msgAtLoc("expected value `{s}` but got `{s}`", eb_filename, identifier_loc, .err, .{
+                try error_builder.msgAtLoc("expected value `{s}` but got `{s}`", file_path, identifier_loc, .err, .{
                     expected_value,
                     actual_value,
                 });

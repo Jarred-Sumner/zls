@@ -685,7 +685,11 @@ fn createBuildFile(self: *DocumentStore, uri: Uri) error{OutOfMemory}!BuildFile 
         }
     }
 
-    if (std.process.can_spawn) {
+    if (std.process.can_spawn and
+        self.config.zig_exe_path != null and
+        self.config.build_runner_path != null and
+        self.config.global_cache_path != null)
+    {
         const Server = @import("Server.zig");
         const server = @fieldParentPtr(Server, "document_store", self);
 

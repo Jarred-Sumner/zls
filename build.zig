@@ -68,9 +68,6 @@ pub fn build(b: *std.build.Builder) !void {
 
     const exe_options = b.addOptions();
     exe_options.addOption(std.log.Level, "log_level", b.option(std.log.Level, "log_level", "The Log Level to be used.") orelse .info);
-    exe_options.addOption(bool, "enable_tracy", enable_tracy);
-    exe_options.addOption(bool, "enable_tracy_allocation", b.option(bool, "enable_tracy_allocation", "Enable using TracyAllocator to monitor allocations.") orelse enable_tracy);
-    exe_options.addOption(bool, "enable_tracy_callstack", b.option(bool, "enable_tracy_callstack", "Enable callstack graphs.") orelse enable_tracy);
     exe_options.addOption(bool, "enable_failing_allocator", b.option(bool, "enable_failing_allocator", "Whether to use a randomly failing allocator.") orelse false);
     exe_options.addOption(u32, "enable_failing_allocator_likelihood", b.option(u32, "enable_failing_allocator_likelihood", "The chance that an allocation will fail is `1/likelihood`") orelse 256);
     exe_options.addOption(bool, "use_gpa", b.option(bool, "use_gpa", "Good for debugging") orelse (optimize == .Debug));
@@ -80,6 +77,9 @@ pub fn build(b: *std.build.Builder) !void {
 
     const build_options = b.addOptions();
     const build_options_module = build_options.createModule();
+    build_options.addOption(bool, "enable_tracy", enable_tracy);
+    build_options.addOption(bool, "enable_tracy_allocation", b.option(bool, "enable_tracy_allocation", "Enable using TracyAllocator to monitor allocations.") orelse enable_tracy);
+    build_options.addOption(bool, "enable_tracy_callstack", b.option(bool, "enable_tracy_callstack", "Enable callstack graphs.") orelse enable_tracy);
     build_options.addOption([]const u8, "version_string", version_string);
     build_options.addOption(std.SemanticVersion, "version", try std.SemanticVersion.parse(version_string));
 
@@ -199,6 +199,10 @@ pub fn build(b: *std.build.Builder) !void {
         .single_threaded = single_threaded,
     });
 
+    const sema_test = addSemaTests(b, test_step, target);
+    sema_test.addModule("zls", zls_module);
+    sema_test.addModule("build_options", build_options_module);
+
     tests.addModule("zls", zls_module);
     tests.addModule("build_options", build_options_module);
     tests.addModule("test_options", test_options_module);
@@ -246,5 +250,80 @@ pub fn build(b: *std.build.Builder) !void {
         merge_step.step.dependOn(&tests_run.step);
         merge_step.step.dependOn(&src_tests_run.step);
         test_step.dependOn(&merge_step.step);
+    }
+}
+
+fn addSemaTests(
+    b: *std.build.Builder,
+    test_step: *std.build.Step,
+    target: std.zig.CrossTarget,
+) *std.Build.Step.Compile {
+    const sema_test = b.addExecutable(.{
+        .name = "zls_sema_test",
+        .root_source_file = .{ .path = "tests/sema_tester.zig" },
+        .target = target,
+        .optimize = .Debug,
+    });
+
+    addSemaCasesFromRecursiveDir(b, test_step, sema_test, .{ .path = b.pathFromRoot("tests/sema") }, false);
+    addSemaCasesFromRecursiveDir(b, test_step, sema_test, .{ .path = b.pathFromRoot("src") }, true);
+
+    // TODO zig_lib_dir is not being resolved
+    if (b.zig_lib_dir) |dir_path| {
+        addSemaCasesFromRecursiveDir(b, test_step, sema_test, dir_path, true);
+    }
+    return sema_test;
+}
+
+fn addSemaCasesFromRecursiveDir(
+    b: *std.build.Builder,
+    test_step: *std.build.Step,
+    sema_test: *std.build.Step.Compile,
+    dir_path: std.build.LazyPath,
+    is_fuzz: bool,
+) void {
+    var dir = std.fs.openIterableDirAbsolute(dir_path.getPath(b), .{}) catch unreachable;
+    defer dir.close();
+
+    addSemaCasesFromRecursiveDir2(b, test_step, sema_test, dir, is_fuzz);
+}
+
+fn addSemaCasesFromRecursiveDir2(
+    b: *std.build.Builder,
+    test_step: *std.build.Step,
+    sema_test: *std.build.Step.Compile,
+    dir: std.fs.IterableDir,
+    is_fuzz: bool,
+) void {
+    var iter = dir.iterateAssumeFirstIteration();
+    while (iter.next() catch unreachable) |entry| {
+        switch (entry.kind) {
+            .file => {
+                if (!std.mem.eql(u8, std.fs.path.extension(entry.name), ".zig")) continue;
+                if (std.mem.eql(u8, entry.name, "udivmodti4_test.zig")) continue; // exclude very large file
+                if (std.mem.eql(u8, entry.name, "udivmoddi4_test.zig")) continue; // exclude very large file
+                if (std.mem.eql(u8, entry.name, "darwin.zig")) continue; // TODO fix upstream issue with OS_SIGNPOST_ID_INVALID
+                if (std.mem.eql(u8, entry.name, "lock.zig")) continue; // TODO
+
+                const run_test = b.addRunArtifact(sema_test);
+                test_step.dependOn(&run_test.step);
+                run_test.setName(b.fmt("run sema test on {s}", .{entry.name}));
+
+                run_test.stdio = .zig_test;
+
+                var out_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+                const file_path = dir.dir.realpath(entry.name, &out_buffer) catch unreachable;
+                run_test.addFileArg(.{ .path = file_path });
+                if (is_fuzz) {
+                    run_test.addArg("--fuzz");
+                }
+            },
+            .directory => {
+                var sub_dir = dir.dir.openIterableDir(entry.name, .{}) catch unreachable;
+                defer sub_dir.close();
+                addSemaCasesFromRecursiveDir2(b, test_step, sema_test, sub_dir, is_fuzz);
+            },
+            else => {},
+        }
     }
 }
