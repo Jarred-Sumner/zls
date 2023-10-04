@@ -41,10 +41,11 @@ pub fn addFile(builder: *ErrorBuilder, name: []const u8, source: []const u8) err
     assertFmt(!gop.found_existing, "file '{s}' already exists", .{name});
 }
 
-pub fn removeFile(builder: *ErrorBuilder, name: []const u8) error{OutOfMemory}!void {
-    const found = builder.files.remove(name);
-    assertFmt(found, "file '{s}' doesn't exist", .{name});
-    builder.message_count -= found.messages.items.len;
+/// preserves insertion order
+pub fn removeFile(builder: *ErrorBuilder, name: []const u8) void {
+    const found = builder.files.fetchOrderedRemove(name);
+    assertFmt(found != null, "file '{s}' doesn't exist", .{name});
+    builder.message_count -= found.?.value.messages.items.len;
 }
 
 pub fn msgAtLoc(

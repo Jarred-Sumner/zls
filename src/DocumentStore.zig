@@ -271,7 +271,7 @@ pub fn closeDocument(self: *DocumentStore, uri: Uri) void {
 /// Takes ownership of `new_text` which has to be allocated
 /// with this DocumentStore's allocator
 /// **Thread safe** takes an exclusive lock
-pub fn refreshDocument(self: *DocumentStore, uri: Uri, new_text: [:0]const u8) !void {
+pub fn refreshDocument(self: *DocumentStore, uri: Uri, new_text: [:0]const u8) error{OutOfMemory}!void {
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 

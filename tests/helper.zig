@@ -186,7 +186,7 @@ pub const AnnotatedSourceLoc = struct {
 ///     },
 /// },
 /// ```
-pub fn collectAnnotatedSourceLocations(allocator: std.mem.Allocator, source: []const u8) ![]AnnotatedSourceLoc {
+pub fn collectAnnotatedSourceLocations(allocator: std.mem.Allocator, source: []const u8) error{ OutOfMemory, InvalidSourceLoc }![]AnnotatedSourceLoc {
     var items = std.ArrayListUnmanaged(AnnotatedSourceLoc){};
     errdefer items.deinit(allocator);
 
