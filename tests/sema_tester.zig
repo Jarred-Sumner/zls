@@ -40,22 +40,37 @@ pub fn main() Error!void {
 
     _ = arg_it.skip();
 
+    var arena_allocator = std.heap.ArenaAllocator.init(gpa);
+    defer arena_allocator.deinit();
+
+    const arena = arena_allocator.allocator();
+
     var files = std.ArrayListUnmanaged([]const u8){};
-    defer {
-        for (files.items) |path| gpa.free(path);
-        files.deinit(gpa);
-    }
     var is_fuzz = false;
+
+    var config = zls.Config{
+        .analysis_backend = .astgen_analyser,
+    };
 
     while (arg_it.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) {
             while (arg_it.next()) |path| {
                 // std.debug.print("file_path: {s}\n", .{path});
-                const duped_path = try gpa.dupe(u8, path);
-                errdefer gpa.free(duped_path);
-                try files.append(gpa, duped_path);
+                try files.append(arena, try arena.dupe(u8, path));
             }
             break;
+        } else if (std.mem.eql(u8, arg, "--zig-exe-path")) {
+            const zig_exe_path = arg_it.next() orelse {
+                stderr.print("expected argument after '--zig-exe-path'.\n", .{}) catch {};
+                std.process.exit(1);
+            };
+            config.zig_exe_path = try arena.dupe(u8, zig_exe_path);
+        } else if (std.mem.eql(u8, arg, "--zig-lib-path")) {
+            const zig_lib_path = arg_it.next() orelse {
+                stderr.print("expected argument after '--zig-lib-path'.\n", .{}) catch {};
+                std.process.exit(1);
+            };
+            config.zig_lib_path = try arena.dupe(u8, zig_lib_path);
         } else if (std.mem.eql(u8, arg, "--fuzz")) {
             is_fuzz = true;
         } else {
@@ -69,11 +84,7 @@ pub fn main() Error!void {
 
     var document_store = zls.DocumentStore{
         .allocator = gpa,
-        .config = &zls.Config{
-            .analysis_backend = .astgen_analyser,
-            .enable_ast_check_diagnostics = true,
-            .prefer_ast_check_as_child_process = false,
-        },
+        .config = &config,
         .runtime_zig_version = &@as(?zls.ZigVersionWrapper, null),
     };
     var mod = Module.init(gpa, &ip, &document_store);
@@ -89,11 +100,7 @@ pub fn main() Error!void {
     errdefer error_builder.writeDebug();
     error_builder.file_name_visibility = .always;
 
-    const handle_uri = switch (builtin.os.tag) {
-        .windows => "file:///C:\\test.zig",
-        else => "file:///test.zig",
-    };
-
+    var previous_handle_uri: ?[]const u8 = null;
     var previous_eb_filename: ?[]const u8 = null;
 
     for (files.items, 0..) |file_path, increment| {
@@ -103,11 +110,17 @@ pub fn main() Error!void {
         const source = file.readToEndAllocOptions(gpa, std.math.maxInt(usize), null, @alignOf(u8), 0) catch |err|
             std.debug.panic("failed to read from {s}: {}", .{ file_path, err });
 
+        const handle_uri = try zls.URI.fromPath(arena, file_path);
+
         if (increment == 0) {
             defer gpa.free(source);
             try document_store.openDocument(handle_uri, source);
+            previous_handle_uri = handle_uri;
         } else {
-            try document_store.refreshDocument(handle_uri, source);
+            try document_store.refreshDocument(previous_handle_uri.?, source);
+            // rename handle
+            document_store.handles.getKeyPtr(previous_handle_uri.?).?.* = handle_uri;
+            try document_store.handles.reIndex(document_store.allocator);
         }
         const handle: *zls.DocumentStore.Handle = document_store.handles.get(handle_uri).?;
 

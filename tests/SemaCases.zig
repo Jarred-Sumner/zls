@@ -32,6 +32,13 @@ pub fn lowerToBuild(
         run_test.setName(b.fmt("run sema test on {s}", .{file_set.name}));
         run_test.stdio = .zig_test;
 
+        run_test.addArg("--zig-exe-path");
+        run_test.addFileArg(.{ .path = b.zig_exe });
+        if (b.zig_lib_dir) |zig_lib_dir| {
+            run_test.addArg("--zig-lib-path");
+            run_test.addDirectoryArg(zig_lib_dir);
+        }
+
         if (file_set.options.ignore_annotation) {
             run_test.addArg("--fuzz");
         }
