@@ -383,7 +383,6 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
     defer tracy_zone.end();
 
     const tree = decl_handle.handle.tree;
-    const decl = decl_handle.decl.*;
 
     const is_cimport = std.mem.eql(u8, std.fs.path.basename(decl_handle.handle.uri), "cimport.zig");
     if (is_cimport) {
@@ -401,7 +400,7 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
         if (exclusions.has(name)) return;
     }
 
-    switch (decl_handle.decl.*) {
+    switch (decl_handle.get()) {
         .ast_node => |node| try nodeToCompletion(
             context.server,
             context.analyser,
@@ -447,7 +446,7 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
 
             try context.completions.append(context.arena, .{
                 .label = name,
-                .kind = if (decl == .label_decl) .Text else .Variable,
+                .kind = if (decl_handle.getTag() == .label_decl) .Text else .Variable,
                 .insertText = name,
                 .insertTextFormat = .PlainText,
             });
@@ -1292,12 +1291,10 @@ fn collectVarAccessContainerNodes(
             try node_type.getAllTypesWithHandlesArrayList(arena, types_with_handles);
             return;
         }
-        var fn_param_decl = Analyser.Declaration{ .param_payload = .{
+        const param_type = try analyser.resolveParamType(symbol_decl.handle, .{
             .func = fn_proto_node,
             .param_index = @intCast(dot_context.fn_arg_index),
-        } };
-        const fn_param_decl_with_handle = Analyser.DeclWithHandle{ .decl = &fn_param_decl, .handle = symbol_decl.handle };
-        const param_type = try fn_param_decl_with_handle.resolveType(analyser) orelse return;
+        }) orelse return;
         try types_with_handles.append(arena, param_type);
         return;
     }

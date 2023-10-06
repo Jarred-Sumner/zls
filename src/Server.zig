@@ -1469,7 +1469,7 @@ fn generalReferencesHandler(server: *Server, arena: std.mem.Allocator, request: 
         else => true,
     };
 
-    const locations = if (decl.decl.* == .label_decl)
+    const locations = if (decl.getTag() == .label_decl)
         try references.labelReferences(arena, decl, server.offset_encoding, include_decl)
     else
         try references.symbolReferences(

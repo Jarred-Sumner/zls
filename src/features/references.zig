@@ -18,15 +18,16 @@ pub fn labelReferences(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    std.debug.assert(decl.decl.* == .label_decl); // use `symbolReferences` instead
+    std.debug.assert(decl.getTag() == .label_decl); // use `symbolReferences` instead
     const handle = decl.handle;
     const tree = handle.tree;
     const token_tags = tree.tokens.items(.tag);
 
     // Find while / for / block from label -> iterate over children nodes, find break and continues, change their labels if they match.
     // This case can be implemented just by scanning tokens.
-    const first_tok = decl.decl.label_decl.label;
-    const last_tok = ast.lastToken(tree, decl.decl.label_decl.block);
+    const label_decl = decl.get().label_decl;
+    const first_tok = label_decl.label;
+    const last_tok = ast.lastToken(tree, label_decl.block);
 
     var locations = std.ArrayListUnmanaged(types.Location){};
     errdefer locations.deinit(allocator);
@@ -196,7 +197,7 @@ pub fn symbolReferences(
     const tracy_zone = tracy.trace(@src());
     defer tracy_zone.end();
 
-    std.debug.assert(decl_handle.decl.* != .label_decl); // use `labelReferences` instead
+    std.debug.assert(decl_handle.getTag() != .label_decl); // use `labelReferences` instead
 
     var builder = Builder{
         .allocator = allocator,
@@ -209,7 +210,7 @@ pub fn symbolReferences(
     const curr_handle = decl_handle.handle;
     if (include_decl) try builder.add(curr_handle, decl_handle.nameToken());
 
-    switch (decl_handle.decl.*) {
+    switch (decl_handle.get()) {
         .ast_node => {
             try builder.collectReferences(curr_handle, 0);
             if (workspace) {
@@ -242,7 +243,7 @@ const CallBuilder = struct {
     allocator: std.mem.Allocator,
     callsites: std.ArrayListUnmanaged(Callsite) = .{},
     /// this is the declaration we are searching for
-    decl_handle: Analyser.DeclWithHandle,
+    node_handle: Analyser.NodeWithHandle,
     analyser: *Analyser,
 
     const Context = struct {
@@ -294,7 +295,7 @@ const CallBuilder = struct {
                 const called_node = call.ast.fn_expr;
 
                 switch (node_tags[called_node]) {
-                    .identifier => {
+                    .identifier => blk: {
                         const identifier_token = Analyser.getDeclNameToken(tree, called_node).?;
 
                         const child = (try builder.analyser.lookupSymbolGlobal(
@@ -303,11 +304,11 @@ const CallBuilder = struct {
                             starts[identifier_token],
                         )) orelse return;
 
-                        if (builder.decl_handle.eql(child)) {
+                        if (builder.node_handle.eql(child.asAstNode() orelse break :blk)) {
                             try builder.add(handle, node);
                         }
                     },
-                    .field_access => {
+                    .field_access => blk: {
                         const left_type = try builder.analyser.resolveFieldAccessLhsType(
                             (try builder.analyser.resolveTypeOfNode(.{ .node = datas[called_node].lhs, .handle = handle })) orelse return,
                         );
@@ -315,7 +316,7 @@ const CallBuilder = struct {
                         const symbol = offsets.tokenToSlice(tree, datas[called_node].rhs);
                         const child = (try left_type.lookupSymbol(builder.analyser, symbol)) orelse return;
 
-                        if (builder.decl_handle.eql(child)) {
+                        if (builder.node_handle.eql(child.asAstNode() orelse break :blk)) {
                             try builder.add(handle, node);
                         }
                     },
@@ -330,7 +331,7 @@ const CallBuilder = struct {
 pub fn callsiteReferences(
     allocator: std.mem.Allocator,
     analyser: *Analyser,
-    decl_handle: Analyser.DeclWithHandle,
+    node_handle: Analyser.NodeWithHandle,
     /// add `decl_handle` as a references
     include_decl: bool,
     /// exclude references from the std library
@@ -338,17 +339,17 @@ pub fn callsiteReferences(
     /// search other files for references
     workspace: bool,
 ) error{OutOfMemory}!std.ArrayListUnmanaged(Callsite) {
-    std.debug.assert(decl_handle.decl.* == .ast_node);
-
     var builder = CallBuilder{
         .allocator = allocator,
         .analyser = analyser,
-        .decl_handle = decl_handle,
+        .node_handle = node_handle,
     };
     errdefer builder.deinit();
 
-    const curr_handle = decl_handle.handle;
-    if (include_decl) try builder.add(curr_handle, decl_handle.nameToken());
+    const curr_handle = node_handle.handle;
+
+    const name_token = Analyser.getDeclNameToken(curr_handle.tree, node_handle.node).?;
+    if (include_decl) try builder.add(curr_handle, name_token);
 
     try builder.collectReferences(curr_handle, 0);
 

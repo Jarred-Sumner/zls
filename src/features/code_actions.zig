@@ -100,7 +100,7 @@ fn handleUnusedFunctionParameter(builder: *Builder, actions: *std.ArrayListUnman
         loc.start,
     )) orelse return;
 
-    const payload = switch (decl.decl.*) {
+    const payload = switch (decl.get()) {
         .param_payload => |pay| pay,
         else => return,
     };
@@ -147,7 +147,7 @@ fn handleUnusedVariableOrConstant(builder: *Builder, actions: *std.ArrayListUnma
         loc.start,
     )) orelse return;
 
-    const node = switch (decl.decl.*) {
+    const node = switch (decl.get()) {
         .ast_node => |node| node,
         .assign_destructure => |payload| payload.node,
         else => return,

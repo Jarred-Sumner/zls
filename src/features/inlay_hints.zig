@@ -101,23 +101,15 @@ fn writeCallHint(builder: *Builder, call: Ast.full.Call, decl_handle: Analyser.D
     const handle = builder.handle;
     const tree = handle.tree;
 
-    const node = switch (decl_handle.decl.*) {
-        .ast_node => |node| node,
-        else => return,
-    };
+    const decl_node = decl_handle.asAstNode() orelse return;
+    const resolved_decl_handle = try builder.analyser.resolveVarDeclAlias(decl_node) orelse decl_handle;
 
-    const maybe_resolved_alias = try builder.analyser.resolveVarDeclAlias(.{ .node = node, .handle = decl_handle.handle });
-    const resolved_decl_handle = if (maybe_resolved_alias) |resolved_decl| resolved_decl else decl_handle;
-
-    const fn_node = switch (resolved_decl_handle.decl.*) {
-        .ast_node => |fn_node| fn_node,
-        else => return,
-    };
+    const fn_decl_node = resolved_decl_handle.asAstNode() orelse return;
 
     const decl_tree = resolved_decl_handle.handle.tree;
 
     var buffer: [1]Ast.Node.Index = undefined;
-    const fn_proto = decl_tree.fullFnProto(&buffer, fn_node) orelse return;
+    const fn_proto = decl_tree.fullFnProto(&buffer, fn_decl_node.node) orelse return;
 
     var params = try std.ArrayListUnmanaged(Ast.full.FnProto.Param).initCapacity(builder.arena, fn_proto.ast.params.len);
     defer params.deinit(builder.arena);

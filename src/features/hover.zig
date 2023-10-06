@@ -32,7 +32,7 @@ fn hoverSymbol(
 
     var is_fn = false;
 
-    const def_str = switch (decl_handle.decl.*) {
+    const def_str = switch (decl_handle.get()) {
         .ast_node => |node| def: {
             if (try analyser.resolveVarDeclAlias(.{ .node = node, .handle = handle })) |result| {
                 return try hoverSymbol(analyser, arena, result, markup_kind, doc_str);
