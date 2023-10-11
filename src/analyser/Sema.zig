@@ -747,12 +747,12 @@ fn zirCondbr(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Z
 //
 
 pub fn resolveIndex(sema: *Sema, zir_ref: Zir.Inst.Ref) Index {
-    var i: usize = @intFromEnum(zir_ref);
+    var i: u32 = @intFromEnum(zir_ref);
 
-    if (i < Zir.ref_start_index) return @as(Index, @enumFromInt(i));
+    if (i < Zir.ref_start_index) return @enumFromInt(i);
     i -= Zir.ref_start_index;
 
-    return sema.index_map.get(@as(u32, @intCast(i))) orelse .unknown_unknown;
+    return sema.index_map.get(i) orelse .unknown_unknown;
 }
 
 pub fn resolveType(sema: *Sema, block: *Block, src: LazySrcLoc, zir_ref: Zir.Inst.Ref) Allocator.Error!Index {
@@ -947,7 +947,7 @@ fn zirVectorType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Err
     // try sema.checkVectorElemType(block, elem_type_src, elem_type);
 
     return try sema.get(.{ .vector_type = .{
-        .len = @as(u32, @intCast(len)),
+        .len = @intCast(len),
         .child = elem_type,
     } });
 }
@@ -1490,7 +1490,7 @@ fn zirFunc(
     const ret_ty: Index = switch (extra.data.ret_body_len) {
         0 => .void_type,
         1 => blk: {
-            const ret_ty_ref = @as(Zir.Inst.Ref, @enumFromInt(sema.code.extra[extra_index]));
+            const ret_ty_ref: Zir.Inst.Ref = @enumFromInt(sema.code.extra[extra_index]);
             extra_index += 1;
             break :blk try sema.resolveType(block, ret_ty_src, ret_ty_ref);
         },
@@ -1984,7 +1984,7 @@ fn zirErrorSetDecl(
     var names = try gpa.alloc(StringPool.String, extra.data.fields_len);
     defer gpa.free(names);
 
-    var extra_index = @as(u32, @intCast(extra.end));
+    var extra_index: u32 = @intCast(extra.end);
     var name_index: usize = 0;
     const extra_index_end = extra_index + (extra.data.fields_len * 2);
     while (extra_index < extra_index_end) : (extra_index += 2) { // +2 to skip over doc_string
@@ -2008,9 +2008,9 @@ fn zirStructDecl(
     extended: Zir.Inst.Extended.InstData,
     inst: Zir.Inst.Index,
 ) Allocator.Error!Index {
-    const small = @as(Zir.Inst.StructDecl.Small, @bitCast(extended.small));
+    const small: Zir.Inst.StructDecl.Small = @bitCast(extended.small);
     const src: LazySrcLoc = if (small.has_src_node) blk: {
-        const node_offset = @as(i32, @bitCast(sema.code.extra[extended.operand]));
+        const node_offset: i32 = @bitCast(sema.code.extra[extended.operand]);
         break :blk LazySrcLoc.nodeOffset(node_offset);
     } else sema.src;
 
@@ -2176,11 +2176,11 @@ pub fn analyzeStructDecl(
 ) Allocator.Error!void {
     const extended: Zir.Inst.Extended.InstData = sema.code.instructions.items(.data)[struct_obj.zir_index].extended;
     assert(extended.opcode == .struct_decl);
-    const small = @as(Zir.Inst.StructDecl.Small, @bitCast(extended.small));
+    const small: Zir.Inst.StructDecl.Small = @bitCast(extended.small);
 
     // struct_obj.known_non_opv = small.known_non_opv;
 
-    var extra_index: usize = extended.operand;
+    var extra_index: u32 = extended.operand;
     extra_index += @intFromBool(small.has_src_node);
     extra_index += @intFromBool(small.has_fields_len);
     const decls_len = if (small.has_decls_len) blk: {
@@ -2226,7 +2226,7 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
     const zir: Zir = namespace.handle.zir;
     const extended = zir.instructions.items(.data)[struct_obj.zir_index].extended;
     assert(extended.opcode == .struct_decl);
-    const small = @as(Zir.Inst.StructDecl.Small, @bitCast(extended.small));
+    const small: Zir.Inst.StructDecl.Small = @bitCast(extended.small);
     var extra_index: usize = extended.operand;
 
     extra_index += @intFromBool(small.has_src_node);
@@ -2314,7 +2314,7 @@ fn semaStructFields(sema: *Sema, struct_obj: *InternPool.Struct) Allocator.Error
             if (has_type_body) {
                 field.type_body_len = zir.extra[extra_index];
             } else {
-                field.type_ref = @as(Zir.Inst.Ref, @enumFromInt(zir.extra[extra_index]));
+                field.type_ref = @enumFromInt(zir.extra[extra_index]);
             }
             extra_index += 1;
 
@@ -2385,7 +2385,7 @@ pub fn scanNamespace(
     sema: *Sema,
     namespace: *Namespace,
     namespace_index: InternPool.NamespaceIndex,
-    extra_start: usize,
+    extra_start: u32,
     decls_len: u32,
     parent_decl: *Decl,
 ) Allocator.Error!usize {
@@ -2395,9 +2395,9 @@ pub fn scanNamespace(
         .mod = sema.mod,
     });
 
-    const bit_bags_count = std.math.divCeil(usize, decls_len, 8) catch unreachable;
+    const bit_bags_count = std.math.divCeil(u32, decls_len, 8) catch unreachable;
     var extra_index = extra_start + bit_bags_count;
-    var bit_bag_index: usize = extra_start;
+    var bit_bag_index: u32 = extra_start;
     var cur_bit_bag: u32 = undefined;
     var decl_i: u32 = 0;
     var scan_decl_iter: ScanDeclIter = .{
@@ -2434,7 +2434,7 @@ const ScanDeclIter = struct {
     unnamed_test_index: usize = 0,
 };
 
-fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) Allocator.Error!void {
+fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: u32, flags: u4) Allocator.Error!void {
     const mod = iter.module;
     const namespace = iter.namespace;
     const namespace_index = iter.namespace_index;
@@ -2526,7 +2526,7 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
         new_decl.is_exported = is_exported;
         // new_decl.has_align = has_align;
         // new_decl.has_linksection_or_addrspace = has_linksection_or_addrspace;
-        new_decl.zir_decl_index = @as(u32, @intCast(decl_sub_index));
+        new_decl.zir_decl_index = decl_sub_index;
 
         try sema.ensureDeclAnalyzed(new_decl_index);
         return;
@@ -2543,7 +2543,7 @@ fn scanDecl(sema: *Sema, iter: *ScanDeclIter, decl_sub_index: usize, flags: u4) 
     decl.kind = kind;
     // decl.has_align = has_align;
     // decl.has_linksection_or_addrspace = has_linksection_or_addrspace;
-    decl.zir_decl_index = @as(u32, @intCast(decl_sub_index));
+    decl.zir_decl_index = decl_sub_index;
 }
 
 //
