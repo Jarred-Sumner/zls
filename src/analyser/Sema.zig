@@ -991,9 +991,14 @@ fn zirBoolNot(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!
     return switch (operand) {
         Index.bool_false => Index.bool_true,
         Index.bool_true => Index.bool_false,
-        else => switch (sema.indexToKey(operand)) {
-            .undefined_value => operand,
-            else => sema.getUnknownValue(.bool_type),
+        else => {
+            if (std.debug.runtime_safety) {
+                switch (sema.indexToKey(operand)) {
+                    .undefined_value, .unknown_value => {},
+                    else => unreachable,
+                }
+            }
+            return operand;
         },
     };
 }
@@ -1634,6 +1639,8 @@ fn zirOptionalPayload(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocato
         return operand_key.optional_value.val;
     } else if (sema.mod.ip.isNull(operand) or operand_key == .undefined_value) {
         try sema.fail(block, src, .{ .invalid_optional_unwrap = .{ .operand = operand } });
+    } else {
+        std.debug.assert(sema.mod.ip.isUnknown(operand));
     }
 
     return try sema.getUnknownValue(result_ty);

@@ -892,7 +892,7 @@ pub fn get(ip: *InternPool, gpa: Allocator, key: Key) Allocator.Error!Index {
         .null_value => |null_val| @intFromEnum(null_val.ty),
         .undefined_value => |undefined_val| @intFromEnum(undefined_val.ty),
         .unknown_value => |unknown_val| blk: {
-            std.debug.assert(unknown_val.ty != .type_type); // .unknown_type instead
+            assert(unknown_val.ty != .type_type); // .unknown_type instead
             break :blk @intFromEnum(unknown_val.ty);
         },
         inline else => |data| try ip.addExtra(gpa, data),
@@ -4335,6 +4335,8 @@ test "coerce int" {
 }
 
 fn testCoerce(ip: *InternPool, dest_ty: Index, inst: Index, expected: Index) !void {
+    assert(ip.isType(dest_ty));
+
     const gpa = std.testing.allocator;
     var arena_allocator = std.heap.ArenaAllocator.init(gpa);
     defer arena_allocator.deinit();
