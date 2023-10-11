@@ -301,7 +301,7 @@ pub fn refreshDocument(self: *DocumentStore, uri: Uri, new_text: [:0]const u8) !
     }
 
     if (self.config.analysis_backend == .astgen_analyser) {
-        try analysis.transferInternPoolData(self.allocator, handle, &new_handle.document_scope);
+        analysis.transferInternPoolData(handle, &new_handle.document_scope);
     }
 
     handle.deinit(self.allocator, self.mod);

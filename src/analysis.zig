@@ -2701,7 +2701,6 @@ pub const Declaration = union(enum) {
     intern_pool_index: struct {
         name: Ast.TokenIndex,
         index: InternPool.Index,
-        fallback: Index,
     },
 
     pub const Param = struct {
@@ -2991,17 +2990,16 @@ pub const DeclWithHandle = struct {
             },
             .error_token => return null,
             .intern_pool_index => |payload| {
-                if (payload.index != .none and !analyser.ip.?.isUnknownDeep(payload.index)) {
-                    return TypeWithHandle{
-                        .type = .{ .data = .{ .ip_index = .{ .index = payload.index } }, .is_type_val = false },
-                        .handle = self.handle,
-                    };
-                } else {
-                    return try resolveType(.{
-                        .decl = &self.handle.document_scope.decls.items[@intFromEnum(payload.fallback)],
-                        .handle = self.handle,
-                    }, analyser);
-                }
+                if (payload.index == .none) return null;
+                if (analyser.ip.?.isUnknownDeep(payload.index)) return null;
+
+                return TypeWithHandle{
+                    .type = .{
+                        .data = .{ .ip_index = .{ .index = payload.index } },
+                        .is_type_val = false,
+                    },
+                    .handle = self.handle,
+                };
             },
         };
     }
@@ -3447,27 +3445,14 @@ pub fn lookupDeclaration(document_scope: DocumentScope, symbol: Declaration.Key,
 }
 
 // this is incredibly inefficient but it works
-pub fn transferInternPoolData(allocator: std.mem.Allocator, from: *DocumentStore.Handle, to: *DocumentScope) !void {
-    var count: usize = 0;
-    for (from.document_scope.decls.items) |from_decl| {
-        if (from_decl == .intern_pool_index) count += 1;
-    }
-
-    try to.decls.ensureUnusedCapacity(allocator, count);
-
+pub fn transferInternPoolData(from: *DocumentStore.Handle, to: *DocumentScope) void {
     for (from.document_scope.decls.items) |from_decl| {
         if (from_decl != .intern_pool_index) continue;
         const name_token = from_decl.intern_pool_index.name;
         const source_index = offsets.tokenToIndex(from.tree, name_token);
         const symbol = Declaration.Key{ .kind = .variable, .name = offsets.tokenToSlice(from.tree, name_token) };
         const to_decl_index = lookupDeclaration(to.*, symbol, source_index) orelse continue;
-
-        const fallback_decl = from.document_scope.decls.items[@intFromEnum(from_decl.intern_pool_index.fallback)];
-        from.document_scope.decls.appendAssumeCapacity(fallback_decl);
-        const fallback_decl_index: Declaration.Index = @enumFromInt(from.document_scope.decls.items.len - 1);
-
         to.decls.items[@intFromEnum(to_decl_index)] = from_decl;
-        to.decls.items[@intFromEnum(to_decl_index)].intern_pool_index.fallback = fallback_decl_index;
     }
 }
 
