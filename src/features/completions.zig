@@ -1422,7 +1422,7 @@ fn collectEnumLiteralContainerNodes(
             .other => |n| n,
             else => continue,
         };
-        const member_decl = try analyser.lookupSymbolContainer(.{ .node = node, .handle = container.handle }, alleged_field_name, .field) orelse continue;
+        const member_decl = try analyser.lookupSymbolContainer(.{ .node = node, .handle = container.handle }, alleged_field_name) orelse continue;
         const member_type = try member_decl.resolveType(analyser) orelse continue;
         try types_with_handles.append(arena, member_type);
     }
