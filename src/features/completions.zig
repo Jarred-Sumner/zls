@@ -471,10 +471,10 @@ fn declToCompletion(context: DeclToCompletionContext, decl_handle: Analyser.Decl
         },
         .intern_pool_index => |payload| {
             const ty = (try decl_handle.resolveType(context.analyser)) orelse Analyser.TypeWithHandle{
-                .type = .{ .data = .{ .ip_index = .{
-                    .node = 0,
-                    .index = payload.index,
-                } }, .is_type_val = false },
+                .type = .{
+                    .data = .{ .ip_index = .{ .node = 0, .index = payload.index } },
+                    .is_type_val = context.analyser.ip.?.typeOf(payload.index) == .type_type,
+                },
                 .handle = decl_handle.handle,
             };
 
