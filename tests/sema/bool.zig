@@ -41,15 +41,33 @@ const NotUndefined = !@as(bool, undefined);
 
 const UndefinedEqTrue = @as(bool, undefined) == true;
 //    ^^^^^^^^^^^^^^^ (bool)(undefined)
+const UndefinedNeqTrue = @as(bool, undefined) != true;
+//    ^^^^^^^^^^^^^^^^ (bool)(undefined)
 
 const UndefinedEqFalse = @as(bool, undefined) == false;
 //    ^^^^^^^^^^^^^^^^ (bool)(undefined)
+const UndefinedNeqFalse = @as(bool, undefined) != false;
+//    ^^^^^^^^^^^^^^^^^ (bool)(undefined)
 
 const TrueEqUndefined = true == @as(bool, undefined);
 //    ^^^^^^^^^^^^^^^ (bool)(undefined)
+const TrueNeqUndefined = true != @as(bool, undefined);
+//    ^^^^^^^^^^^^^^^^ (bool)(undefined)
 
 const FalseEqUndefined = false == @as(bool, undefined);
 //    ^^^^^^^^^^^^^^^^ (bool)(undefined)
+const FalseNeqUndefined = false != @as(bool, undefined);
+//    ^^^^^^^^^^^^^^^^^ (bool)(undefined)
 
 const UndefinedEqUndefined = @as(bool, undefined) == @as(bool, undefined);
 //    ^^^^^^^^^^^^^^^^^^^^ (bool)(undefined)
+
+const UndefinedNeqUndefined = @as(bool, undefined) != @as(bool, undefined);
+//    ^^^^^^^^^^^^^^^^^^^^^ (bool)(undefined)
+
+const TypeOfBool = @TypeOf(bool);
+//    ^^^^^^^^^^ (type)(type)
+const TypeOfTrue = @TypeOf(true);
+//    ^^^^^^^^^^ (type)(bool)
+const TypeOfFalse = @TypeOf(false);
+//    ^^^^^^^^^^^ (type)(bool)
