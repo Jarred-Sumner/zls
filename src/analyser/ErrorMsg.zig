@@ -12,6 +12,13 @@ pub const ErrorMsg = union(enum) {
         expected: Index,
         actual: Index,
     },
+    /// zig: expected optional type, found '{}'
+    /// zig: expected error set type, found '{}'
+    /// zig: expected pointer, found '{}'
+    expected_tag_type: struct {
+        expected_tag: std.builtin.TypeId,
+        actual: Index,
+    },
     /// zig: comparison of '{}' with null
     compare_eq_with_null: struct {
         non_null_type: Index,
@@ -29,18 +36,6 @@ pub const ErrorMsg = union(enum) {
     wrong_array_elem_count: struct {
         expected: u32,
         actual: u32,
-    },
-    /// zig: expected optional type, found '{}'
-    expected_optional_type: struct {
-        actual: Index,
-    },
-    /// zig: expected error set type, found '{}'
-    expected_error_set_type: struct {
-        actual: Index,
-    },
-    /// zig: expected pointer, found '{}'
-    expected_pointer_type: struct {
-        actual: Index,
     },
     /// zig: type '{}' does not support indexing
     /// zig: operand must be an array, slice, tuple, or vector
@@ -82,6 +77,39 @@ pub const ErrorMsg = union(enum) {
                 "expected type '{}', found '{}'",
                 .{ info.expected.fmt(ip), ip.typeOf(info.actual).fmt(ip) },
             ),
+            .expected_tag_type => |info| blk: {
+                const expected_tag_str = switch (info.expected_tag) {
+                    .Type => "type",
+                    .Void => "void",
+                    .Bool => "bool",
+                    .NoReturn => "noreturn",
+                    .Int => "integer",
+                    .Float => "float",
+                    .Pointer => "pointer",
+                    .Array => "array",
+                    .Struct => "struct",
+                    .ComptimeFloat => "comptime_float",
+                    .ComptimeInt => "comptime_int",
+                    .Undefined => "undefined",
+                    .Null => "null",
+                    .Optional => "optional",
+                    .ErrorUnion => "error union",
+                    .ErrorSet => "error set",
+                    .Enum => "enum",
+                    .Union => "union",
+                    .Fn => "function",
+                    .Opaque => "opaque",
+                    .Frame => "frame",
+                    .AnyFrame => "anyframe",
+                    .Vector => "vector",
+                    .EnumLiteral => "enum literal",
+                };
+                break :blk std.fmt.format(
+                    writer,
+                    "expected {s} type, found '{}'",
+                    .{ expected_tag_str, info.actual.fmt(ip) },
+                );
+            },
             .compare_eq_with_null => |info| std.fmt.format(
                 writer,
                 "comparison of '{}' with null",
@@ -105,21 +133,6 @@ pub const ErrorMsg = union(enum) {
                 writer,
                 "expected {d} array elements; found {d}",
                 .{ info.expected, info.actual },
-            ),
-            .expected_optional_type => |info| std.fmt.format(
-                writer,
-                "expected optional type, found '{}'",
-                .{info.actual.fmt(ip)},
-            ),
-            .expected_error_set_type => |info| std.fmt.format(
-                writer,
-                "expected error set type, found '{}'",
-                .{info.actual.fmt(ip)},
-            ),
-            .expected_pointer_type => |info| std.fmt.format(
-                writer,
-                "expected pointer, found '{}'",
-                .{info.actual.fmt(ip)},
             ),
             .expected_indexable_type => |info| std.fmt.format(
                 writer,

@@ -1153,7 +1153,7 @@ fn zirLoad(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator.Error!Ind
     const elem_ty = switch (sema.indexToKey(ptr_ty)) {
         .pointer_type => |info| info.elem_type,
         else => {
-            try sema.fail(block, src, .{ .expected_pointer_type = .{ .actual = ptr_ty } });
+            try sema.fail(block, src, .{ .expected_tag_type = .{ .expected_tag = .Pointer, .actual = ptr_ty } });
             return .unknown_unknown;
         },
     };
@@ -1222,7 +1222,7 @@ fn zirErrorUnionType(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator
     if (sema.mod.ip.isUnknown(error_set)) {
         error_set = Index.unknown_type;
     } else if (sema.mod.ip.zigTypeTag(error_set) != .ErrorSet) {
-        try sema.fail(block, lhs_src, .{ .expected_error_set_type = .{ .actual = error_set } });
+        try sema.fail(block, lhs_src, .{ .expected_tag_type = .{ .expected_tag = .ErrorSet, .actual = error_set } });
         return .unknown_type;
     }
 
@@ -1601,10 +1601,10 @@ fn zirMergeErrorSets(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocator
     if (sema.mod.ip.isUnknown(lhs_ty) or sema.mod.ip.isUnknown(rhs_ty)) return Index.unknown_type;
 
     if (sema.mod.ip.zigTypeTag(lhs_ty) != .ErrorSet) {
-        try sema.fail(block, lhs_src, .{ .expected_error_set_type = .{ .actual = lhs_ty } });
+        try sema.fail(block, lhs_src, .{ .expected_tag_type = .{ .expected_tag = .ErrorSet, .actual = lhs_ty } });
         return .unknown_unknown;
     } else if (sema.mod.ip.zigTypeTag(rhs_ty) != .ErrorSet) {
-        try sema.fail(block, rhs_src, .{ .expected_error_set_type = .{ .actual = rhs_ty } });
+        try sema.fail(block, rhs_src, .{ .expected_tag_type = .{ .expected_tag = .ErrorSet, .actual = rhs_ty } });
         return .unknown_unknown;
     }
 
@@ -1624,7 +1624,7 @@ fn zirOptionalPayload(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Allocato
     const result_ty = switch (sema.indexToKey(operand_ty)) {
         .optional_type => |optional_info| optional_info.payload_type,
         else => {
-            try sema.fail(block, src, .{ .expected_optional_type = .{ .actual = operand_ty } });
+            try sema.fail(block, src, .{ .expected_tag_type = .{ .expected_tag = .Optional, .actual = operand_ty } });
             return try sema.getUnknownValue(.unknown_type);
         },
     };
